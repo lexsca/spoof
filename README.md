@@ -99,10 +99,3 @@ except AttributeError:
 else:
   ssl._create_default_https_context = createUnverifiedHttpsContext
 ```
-
-## Contributions
-
-If you rather add functionality to `Spoof`, just clone the repository!
-Run:
-
-    git clone https://github.com/aaronsca/spoof.git
