@@ -1,27 +1,31 @@
 from setuptools import setup
-import os
-import sys
-import unittest
-
-def discoverTests():
-  filePatterns = ['*_unit_tests.py', '*_functional_tests.py']
-  setupFile = sys.modules['__main__'].__file__
-  setupDir = os.path.abspath(os.path.dirname(setupFile))
-  testsDir = os.path.join(setupDir, 'tests')
-  testSuite = unittest.TestSuite(tests=())
-  for pattern in filePatterns:
-    tests = unittest.defaultTestLoader.discover(testsDir, pattern)
-    testSuite.addTests(tests)
-  return testSuite
 
 setup(
   name='spoof',
-  version='1.0.3',
+  version='1.0.5',
   description='HTTP server for testing environments',
+  long_description=open('README.rst').read(),
   author='Lex Scarisbrick',
   author_email='lex@scarisbrick.org',
+  license='MIT',
+  classifiers=[
+    'Development Status :: 5 - Production/Stable',
+    'Intended Audience :: Developers',
+    'License :: OSI Approved :: MIT License',
+    'Programming Language :: Python :: 2',
+    'Programming Language :: Python :: 2.7',
+    'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.4',
+    'Programming Language :: Python :: 3.5',
+    'Programming Language :: Python :: 3.6',
+    'Topic :: Internet :: WWW/HTTP :: HTTP Servers',
+    'Topic :: Software Development :: Quality Assurance',
+    'Topic :: Software Development :: Libraries :: Python Modules',
+    'Topic :: Software Development :: Testing',
+    'Topic :: Software Development :: Testing :: Traffic Generation'
+  ],
   url='https://github.com/lexsca/spoof.git',
   py_modules=['spoof'],
-  tests_require=['mock', 'requests'],
-  test_suite='__main__.discoverTests',
+  tests_require=['nose', 'mock', 'requests'],
+  test_suite='nose.collector'
 )

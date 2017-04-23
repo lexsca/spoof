@@ -40,6 +40,7 @@ tests/credentials.yaml
 .idea
 .DS_Store
 ._*
+.rnd
 
 # IDEs
 .project
