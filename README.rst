@@ -8,10 +8,10 @@ Compatibility
 
 Spoof was tested with the following versions of Python (2.6.x and 3.3.x omitted due to SSL compatibility issues):
 
--  2.7.13
--  3.4.6
--  3.5.3
--  3.6.1
+-  2.7.14
+-  3.4.7
+-  3.5.4
+-  3.6.4
 
 Installation
 ~~~~~~~~~~~~
@@ -92,18 +92,40 @@ Squelching SSL warnings
 Some libraries like
 `Requests <http://docs.python-requests.org/en/master/>`__ will complain
 loudly or refuse to connect to HTTP servers with a self-signed SSL
-certificate. One way to work around this is to monkeypatch the requests
-library in the testing code. For example:
+certificate. The preferred way to handle this is to use the `verify`
+property in `requests.Session` to trust the certificate:
 
 .. code:: python
 
-  import requests
+    import requests
+    import spoof
 
-  certVerify = requests.adapters.HTTPAdapter.cert_verify
-  def certNoVerify(self, conn, url, verify, cert):
-    return certVerify(self, conn, url, False, cert)
-  requests.adapters.HTTPAdapter.cert_verify = certNoVerify
-  requests.packages.urllib3.disable_warnings()
+    cert, key = spoof.SSLContext.createSelfSignedCert()
+    sslContext = spoof.SSLContext.fromCertChain(cert, key)
+    httpd = spoof.HTTPServer(sslContext=sslContext)
+    httpd.queueResponse((200, (), 'OK'))
+    httpd.start()
+
+    # trust self-signed certificate
+    session = requests.Session()
+    session.verify = cert
+
+    response = session.get(httpd.url + '/uri/path')
+    print(response.status_code, response.content)
+    httpd.stop()
+
+If verifying the certificate is not an option, another way to work around
+this is to monkeypatch the requests library in the testing code. For example:
+
+.. code:: python
+
+    import requests
+
+    certVerify = requests.adapters.HTTPAdapter.cert_verify
+    def certNoVerify(self, conn, url, verify, cert):
+        return certVerify(self, conn, url, False, cert)
+    requests.adapters.HTTPAdapter.cert_verify = certNoVerify
+    requests.packages.urllib3.disable_warnings()
 
 Another common case is libraries that leverage ``ssl`` directly. One way
 to work around this is to globally set the default context to
@@ -111,13 +133,13 @@ unverified. For example:
 
 .. code:: python
 
-  import ssl
+    import ssl
 
-  try:
-    createUnverifiedHttpsContext = ssl._create_unverified_context
-  except AttributeError:
-    # ignore if ssl context not verified by default
-    pass
-  else:
-    ssl._create_default_https_context = createUnverifiedHttpsContext
+    try:
+        createUnverifiedHttpsContext = ssl._create_unverified_context
+    except AttributeError:
+        # ignore if ssl context not verified by default
+        pass
+    else:
+        ssl._create_default_https_context = createUnverifiedHttpsContext
 
