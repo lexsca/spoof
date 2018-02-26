@@ -7,7 +7,14 @@ import requests
 import spoof
 
 
-class TestRequest(unittest.TestCase):
+class BaseMixin(unittest.TestCase):
+    @staticmethod
+    def unlink(*args):
+        for path in args:
+            os.unlink(path)
+
+
+class TestRequest(BaseMixin):
     @classmethod
     def setUpClass(cls):
         cls.cert, cls.key = spoof.SSLContext.createSelfSignedCert()
@@ -23,8 +30,7 @@ class TestRequest(unittest.TestCase):
         cls.httpd6.stop()
         cls.httpd = None
         cls.httpd6 = None
-        for path in cls.cert, cls.key:
-            os.unlink(path)
+        cls.unlink(cls.cert, cls.key)
 
     def setUp(self):
         self.response = [240, [('X-Server', 'IPv4')], 'This is IPv4']
@@ -129,6 +135,28 @@ class TestRequest(unittest.TestCase):
         httpd = spoof.HTTPServer(sslContext=sslContext)
         with self.assertRaises(requests.ConnectionError):
             self.session.get(httpd.url + '/random')
+
+
+class TestProxy(BaseMixin):
+    def test_spoof_https_proxy(self):
+        cert, key = spoof.SSLContext.createSelfSignedCert(commonName='*.com')
+        expected = upstream_content = b'windage-gelding-spume'
+        upstream_url = 'https://google.com/'
+        self.addCleanup(self.unlink, cert, key)
+        sslContext = spoof.SSLContext.fromCertChain(cert, key)
+        httpd = spoof.HTTPServer()
+        httpd.upstream = spoof.HTTPUpstreamServer(sslContext=sslContext)
+        httpd.upstream.defaultResponse = [200, [], upstream_content]
+        httpd.defaultResponse = [200, [('X-Fake-Proxy', 'True')], '']
+        httpd.upstream.start()
+        httpd.start()
+        session = requests.Session()
+        session.verify = cert
+        proxies = {'https': httpd.url}
+        result = session.get(upstream_url, proxies=proxies).content
+        httpd.upstream.stop()
+        httpd.stop()
+        self.assertEqual(expected, result)
 
 
 if __name__ == '__main__':

@@ -1,5 +1,4 @@
-"""
-On-demand HTTP server for use in test environments where it's not
+"""On-demand HTTP server for use in test environments where it's not
 practical to mock underlying calls or it's necessary to have an actual
 HTTP server listening on a socket (e.g. testing IPv6 connectivity).
 """
@@ -28,6 +27,7 @@ except ImportError:
     # method moved in python 3
     from urllib.parse import unquote
 
+HTTP_OK = 200
 HTTP_BAD_GATEWAY = 502
 HTTP_SERVICE_UNAVAILABLE = 503
 HTTP_REQUEST_ENTITY_TOO_LARGE = 413
@@ -37,7 +37,7 @@ MEGABYTE = 2 ** 20
 
 
 class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
-    """ Provides HTTP handler for use with `BaseHTTPServer.HTTPServer`
+    """Provides HTTP handler for use with `BaseHTTPServer.HTTPServer`
     compatible class server. Because the class is passed directly
     instead of an instance of the class, the `*Queue` class attributes
     must be set before passing to the HTTP server.
@@ -84,7 +84,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         return requestEnv
 
     def nextResponse(self):
-        """ Returns next HTTP response to send. """
+        """Returns next HTTP response to send."""
         try:
             response = self.responseContentQueue.get_nowait()
         except Queue.Empty:
@@ -95,7 +95,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         return response
 
     def sendResponse(self, response):
-        """ Sends response to HTTP client. """
+        """Sends response to HTTP client."""
         self.send_response(response[0])
         responseLength = len(response[2])
         for header in response[1]:
@@ -111,27 +111,54 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         else:
             self.end_headers()
 
-    def handleRequest(self):
-        """ Sends spoofed HTTP response and reports request environment. """
-        request = self.reportRequestEnv()
+    def getResponse(self, request):
+        """Get response for this request."""
         response = self.nextResponse()
         if request.contentLength > self.maxRequestLength:
             response = [
                 HTTP_REQUEST_ENTITY_TOO_LARGE, [],
                 'Content-Length > {0}\n\n'.format(self.maxRequestLength)
             ]
+        return response
+
+    def handleRequest(self):
+        """Sends spoofed HTTP response and reports request environment."""
+        request = self.reportRequestEnv()
+        response = self.getResponse(request)
         self.sendResponse(response)
+        return request, response
 
     def __getattr__(self, name):
-        """ Catches `do_COMMAND` method calls from the base class. """
+        """Catches `do_COMMAND` method calls from the base class."""
         if not re.match('^do_[A-Z]+$', name):
             error = "'{0}' object has no attribute '{1}'"
             message = error.format(type(self), name)
             raise AttributeError(message)
         return self.handleRequest
 
+    def do_CONNECT(self):
+        """Handle CONNECT request, sending it upstream if successful."""
+        request, response = self.handleRequest()
+        if response[0] == HTTP_OK and self.server.upstream is not None:
+            if response[2]:
+                message = 'CONNECT requests cannot have response content'
+                raise RuntimeError(message)
+            self.sendRequestUpstream(request, self.server.upstream)
+
+    def sendRequestUpstream(self, request, upstream):
+        """Send request to the upstream handler, first wrapping socket
+        with `ssl.SSLContext` instance if present in the upstream server.
+        """
+        sock = self.request
+        if upstream.sslContext is not None:
+            sock = upstream.sslContext.wrap_socket(
+                sock, server_side=True
+            )
+        upstream.handlerClass(sock, self.client_address, upstream.server)
+        sock.close()
+
     def handle_one_request(self, *args, **kwargs):
-        """ Overrides base class to squelch TLSV1_ALERT_UNKNOWN_CA exception
+        """Overrides base class to squelch TLSV1_ALERT_UNKNOWN_CA exception
         stemming from the use of self-signed certificates.  The error will
         be logged if self.debug is `True`.
         """
@@ -144,15 +171,15 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
                 raise
 
     def log_message(self, *args, **kwargs):
-        """
-        Overrides base class to squelch logging unless self.debug is true.
+        """Overrides base class to squelch logging unless
+        self.debug is true.
         """
         if self.debug:
             super(HTTPRequestHandler, self).log_message(*args, **kwargs)
 
 
 class HTTPServer(object):
-    """ Provides a single-threaded HTTP testing server.
+    """Provides a single-threaded HTTP testing server.
 
     Class attributes:
     :serverClass: `BaseHTTPServer.HTTPServer` compatible class
@@ -171,40 +198,75 @@ class HTTPServer(object):
         :sslContext: `ssl.SSLContext` compatible instance
         """
         self._requests = []
-        self.timeout = timeout
-        self.sslContext = sslContext
+        self._sslContext = sslContext
         self.handlerClass = self.configureHandlerClass(self.handlerClass)
-        if ':' not in str(host):
-            self.serverClass = self.configureServerClass(host)
-        else:
+        if ':' in str(host):
             self.serverClass = HTTPServer6.configureServerClass(host)
-        server = self.serverClass((host, port), self.handlerClass)
-        self.serverAddress = server.server_address
-        server.server_close()
+        else:
+            self.serverClass = self.configureServerClass(host)
+        self.serverClass.timeout = timeout
+        self.serverClass.sslContext = sslContext
+        self.serverAddress = (host, port)
         self.server = None
         self.thread = None
+        self._upstream = None
 
     @property
     def address(self):
-        """ Returns server IP/IPv6 address. """
+        """Returns server IP/IPv6 address."""
         return self.serverAddress[0]
 
     @property
     def port(self):
-        """ Returns server TCP port. """
+        """Returns server TCP port."""
         return self.serverAddress[1]
 
     @property
     def url(self):
-        """ Returns URL string to connect to this server instance. """
+        """Returns URL string to connect to this server instance."""
         protocol = 'http' if self.sslContext is None else 'https'
         address = ('[{0}]'.format(self.address) if ':' in self.address
                    else self.address)
         return '{0}://{1}:{2}'.format(protocol, address, self.port)
 
+    @property
+    def sslContext(self):
+        """Returns `ssl.SSLContext` instance."""
+        return self._sslContext
+
+    @property
+    def timeout(self):
+        """Returns HTTP server timeout."""
+        timeout = self.serverClass.timeout
+        if self.server is not None:
+            timeout = self.server.timeout
+        return timeout
+
+    @timeout.setter
+    def timeout(self, value):
+        """Sets HTTP server timeout."""
+        self.serverClass.timeout = value
+        if self.server is not None:
+            self.server.timeout = value
+
+    @property
+    def upstream(self):
+        """Returns upstream HTTP server, or `None` if not set."""
+        upstream = self._upstream
+        if self.server is not None and self.server.upstream is not None:
+            upstream = self.server.upstream
+        return upstream
+
+    @upstream.setter
+    def upstream(self, value):
+        """Sets upstream HTTP server."""
+        self._upstream = value
+        if self.server is not None:
+            self.server.upstream = value
+
     @classmethod
     def configureServerClass(cls, host):
-        """ Reloads and configures server class. This is necessary, because of
+        """Reloads and configures server class. This is necessary, because of
         the use of class attributes.  If more than one address family is used
         concurrently (e.g. IPv4 _and_ IPv6), one will overwrite the other, as
         the default behavior is for a class to be loaded once and only once,
@@ -223,7 +285,7 @@ class HTTPServer(object):
         return serverClass
 
     def configureHandlerClass(self, sourceClass):
-        """ Reloads and configures handler class. This is necessary because of
+        """Reloads and configures handler class. This is necessary because of
         the use of class attributes, which are necessary because the handler
         class is instantiated anew to handle each request by `BaseServer`.
         To keep the handler class unique to each `Spoof` instance, `type()` is
@@ -239,60 +301,62 @@ class HTTPServer(object):
         return handlerClass
 
     def start(self):
-        """ Starts HTTP server thread. """
+        """Starts HTTP server thread."""
         if self.server is not None:
             message = 'server at {0} already started'.format(self.url)
             raise RuntimeError(message)
         else:
             self.server = self.serverClass(self.serverAddress,
                                            self.handlerClass)
-            self.server.timeout = self.timeout
-        if self.sslContext is not None:
-            self.server.socket = self.sslContext.wrap_socket(
+            self.serverAddress = self.server.server_address
+            self.server.upstream = self._upstream
+        if self.server.sslContext is not None:
+            self.server.socket = self.server.sslContext.wrap_socket(
                 self.server.socket, server_side=True
             )
         self.thread = threading.Thread(target=self.server.serve_forever)
         self.thread.start()
 
     def stop(self):
-        """ Stops HTTP server and closes socket. """
+        """Stops HTTP server and closes socket."""
         if self.server is None:
             message = 'server at {0} already stopped'.format(self.url)
             raise RuntimeError(message)
         self.server.shutdown()
         self.server.server_close()
-        self.thread.join()
+        if self.thread is not None:
+            self.thread.join()
         self.server = None
 
     def __enter__(self):
-        """ Starts HTTP server and returns `Spoof` instance when invoked as a
-        context manager (with/as). """
+        """Starts HTTP server and returns `Spoof` instance when invoked as a
+        context manager (with/as)."""
         self.start()
         return self
 
     def __exit__(self, exceptionType, exceptionValue, traceback):
-        """ Destroys HTTP server instance when context manager block finishes.
+        """Destroys HTTP server instance when context manager block finishes.
         If context block ends normally, all arguments will be `None`.
         """
         self.stop()
 
     def __del__(self):
-        """ Closes HTTP server socket when instance goes out of scope. """
+        """Closes HTTP server socket when instance goes out of scope."""
         if getattr(self, 'server', None) is not None:
             self.stop()
 
     @property
     def debug(self):
-        """ Returns request handler debug flag. """
+        """Returns request handler debug flag."""
         return self.handlerClass.debug
 
     @debug.setter
     def debug(self, value):
-        """ Sets request handler debug flag. """
+        """Sets request handler debug flag."""
         self.handlerClass.debug = value
 
     def reset(self):
-        """ Reset request and response attributes. """
+        """Reset request and response attributes."""
         queues = ['requestReportQueue', 'responseContentQueue']
         for queue in [getattr(self, name) for name in queues]:
             try:
@@ -305,7 +369,7 @@ class HTTPServer(object):
 
     @property
     def requests(self):
-        """ Returns list of namedtuple request report instances.
+        """Returns list of namedtuple request report instances.
         They're called reports, because they're no longer actionable.
         The HTTP server sends responses unconditionally and reports
         the request after the fact.
@@ -339,25 +403,25 @@ class HTTPServer(object):
 
     @property
     def maxRequestLength(self):
-        """ Returns maximum request content length. """
+        """Returns maximum request content length."""
         return self.handlerClass.maxRequestLength
 
     @maxRequestLength.setter
     def maxRequestLength(self, value):
-        """ Sets maximum request content length. """
+        """Sets maximum request content length."""
         self.handlerClass.maxRequestLength = int(value)
 
     @property
     def defaultResponse(self):
-        """ Returns default response used by the request handler class. """
+        """Returns default response used by the request handler class."""
         return self.handlerClass.defaultResponse
 
     @defaultResponse.setter
     def defaultResponse(self, response):
-        """ Sets the default response used by the request handler class to
-        respond to requests when no responses are queued.  If the default
-        response is not set, and no responses are queued, errorResponse is
-        sent.  Response format:
+        """Sets the default response used by the request handler class to
+        respond to requests when no responses are queued. If the default
+        response is not set, and no responses are queued, errorResponse
+        is sent.  Response format:
 
         [httpStatus, [(headerName1, value1), (headerName2, value2)], content]
 
@@ -368,10 +432,10 @@ class HTTPServer(object):
         self.handlerClass.defaultResponse = response
 
     def queueResponse(self, response):
-        """ Queues response to be returned once by HTTP server. Multiple
-        responses may be queued.  If no responses are queued, the handler
-        class defaultResponse will be sent.  If defaultResponse is not set,
-        and no responses are queued, errorResponse is sent.
+        """Queues response to be returned once by HTTP server. If no
+        esponses are queued, the handler class defaultResponse will be sent.
+        If defaultResponse is not set, and no responses are queued,
+        errorResponse is sent.
 
         See `defaultResponse` for response format.
         """
@@ -379,20 +443,56 @@ class HTTPServer(object):
 
 
 class HTTPServer6(HTTPServer):
-    """ Provides a single-threaded, IPv6-only HTTP server. """
+    """Provides a single-threaded, IPv6-only HTTP server."""
 
     addressFamily = socket.AF_INET6
 
 
+class HTTPUpstreamServer(HTTPServer):
+    """Handle upstream requests from `HTTPRequestHandler`, which will
+    directly invoke the `handlerClass` to handle the proxy request.
+    """
+
+    @classmethod
+    def configureServerClass(cls, host):
+        """Override base class method to create fake serverClass."""
+        sourceClass = cls.serverClass
+        serverClass = type(
+            sourceClass.__name__, (object, ), dict()
+        )
+        serverClass.address_family = cls.addressFamily
+        serverClass.serverName = host
+        return serverClass
+
+    def start(self):
+        """Override base class method to start fake server."""
+        if self.server is not None:
+            message = 'server at {0} already started'.format(self.url)
+            raise RuntimeError(message)
+        else:
+            self.server = self.serverClass()
+            self.server.upstream = self._upstream
+            self.server.server_name = self.address
+            self.server.server_port = self.port
+
+    def stop(self):
+        """Override base class method to stop fake server."""
+        if self.server is None:
+            message = 'server at {0} already stopped'.format(self.url)
+            raise RuntimeError(message)
+        self.server = None
+
+
 class SSLContext(object):
-    """ Provides methods to create SSL context for use with `HTTPServer`. """
+    """Provides methods to create SSL context for use with `HTTPServer`."""
 
     @staticmethod
     def fromCertChain(certFile, keyFile=None):
-        """ Returns SSL context from provided certificate chain.
+        """Returns SSL context from provided certificate chain.
 
         :certFile: path to X509 certificate
-        :keyFile: path to certificate signing key (may be included in certFile)
+        :keyFile:  path to certificate signing key
+                   (may be included in certFile)
         """
         context = ssl.create_default_context(purpose=ssl.Purpose.CLIENT_AUTH)
         context.load_cert_chain(certFile, keyFile)
@@ -400,7 +500,7 @@ class SSLContext(object):
 
     @classmethod
     def selfSigned(cls, *args, **kwargs):
-        """ Returns SSL context via self-signed certificate chain. """
+        """Returns SSL context via self-signed certificate chain."""
         certFile, keyFile = cls.createSelfSignedCert(*args, **kwargs)
         context = cls.fromCertChain(certFile, keyFile)
         os.unlink(certFile)
@@ -410,7 +510,7 @@ class SSLContext(object):
     @classmethod
     def createSelfSignedCert(cls, commonName='localhost', bits=2048, days=365,
                              openssl='openssl', subjectAltNames=None):
-        """ Creates and returns file paths to self-signed certificate and key
+        """Creates and returns file paths to self-signed certificate and key
         via OpenSSL command line tool.
 
         :commonName: string of hostname for X509 certificate
@@ -443,7 +543,7 @@ class SSLContext(object):
 
     @staticmethod
     def createOpenSSLConfig(**kwargs):
-        """ Creates and returns file path to OpenSSL configuration
+        """Creates and returns file path to OpenSSL configuration
         suitable for generating a self signed certificate with
         Subject Alternative Name (SAN) fields. Note that SAN entries
         must have the proper prefix, with 'DNS' for fully qualified
