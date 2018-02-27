@@ -151,8 +151,9 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         """
         sock = self.request
         if upstream.sslContext is not None:
+            host = request.headers.get('host', None)
             sock = upstream.sslContext.wrap_socket(
-                sock, server_side=True
+                sock, server_side=True, server_hostname=host
             )
         upstream.handlerClass(sock, self.client_address, upstream.server)
         sock.close()

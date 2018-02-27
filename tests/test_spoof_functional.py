@@ -138,7 +138,7 @@ class TestRequest(BaseMixin):
 
 
 class TestProxy(BaseMixin):
-    def test_spoof_https_proxy(self):
+    def test_spoof_connect_https_proxy(self):
         cert, key = spoof.SSLContext.createSelfSignedCert(commonName='*.com')
         expected = upstream_content = b'windage-gelding-spume'
         upstream_url = 'https://google.com/'
@@ -158,6 +158,31 @@ class TestProxy(BaseMixin):
         httpd.stop()
         self.assertEqual(expected, result)
 
+    def test_spoof_http_proxy_content(self):
+        expected = upstream_content = b'aimless-scanty-thyself'
+        upstream_url = 'http://google.com/'
+        httpd = spoof.HTTPServer()
+        httpd.defaultResponse = [200, [], upstream_content]
+        httpd.start()
+        session = requests.Session()
+        proxies = {'http': httpd.url}
+        result = session.get(upstream_url, proxies=proxies).content
+        httpd.stop()
+        self.assertEqual(expected, result)
+
+    def test_spoof_http_proxy_path(self):
+        upstream_content = b'stimuli-liberia-parable'
+        expected = upstream_url = 'http://armour-lipstick-booze.com/'
+        httpd = spoof.HTTPServer()
+        httpd.defaultResponse = [200, [], upstream_content]
+        httpd.start()
+        session = requests.Session()
+        proxies = {'http': httpd.url}
+        session.get(upstream_url, proxies=proxies).content
+        result = httpd.requests[-1].path
+        httpd.stop()
+        self.assertEqual(expected, result)
+
 
 if __name__ == '__main__':
-    unittest.main()
+        unittest.main()

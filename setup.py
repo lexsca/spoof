@@ -26,6 +26,6 @@ setup(
   ],
   url='https://github.com/lexsca/spoof.git',
   py_modules=['spoof'],
-  tests_require=['nose', 'mock', 'requests'],
-  test_suite='nose.collector'
+  setup_requires=['pytest-runner'],
+  tests_require=['pytest', 'pytest-cov', 'mock', 'requests'],
 )

@@ -35,6 +35,7 @@ coverage*.xml
 .tox
 nosetests.xml
 tests/credentials.yaml
+.pytest_cache/
 
 # OS
 .idea

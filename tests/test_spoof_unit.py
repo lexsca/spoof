@@ -1,10 +1,11 @@
-
-import unittest
-from io import BytesIO
 from collections import namedtuple
+from io import BytesIO
+import random
+import unittest
+
+import mock
 
 import spoof
-import mock
 
 
 class TestHTTPRequestHandler(unittest.TestCase):
@@ -16,10 +17,12 @@ class TestHTTPRequestHandler(unittest.TestCase):
                           'Content-Type: application/json\r\n'
                           '\r\n'
                           '{"success": true}')
-            genServer = namedtuple('HTTPServer', 'serverName server_port')
+            genServer = namedtuple(
+                'HTTPServer', 'serverName server_port upstream'
+            )
             request.wfile = BytesIO()
             request.rfile = BytesIO(rawRequest.encode(spoof.RESPONSE_ENCODING))
-            request.server = genServer('localhost', 8080)
+            request.server = genServer('localhost', 8080, True)
             request.client_address = ('127.0.0.1', 8888)
             request.raw_requestline = request.rfile.readline(65537)
             request.parse_request()
@@ -131,6 +134,12 @@ class TestHTTPRequestHandler(unittest.TestCase):
         self.handler.log_message(message)
         self.assertFalse(mockLog.called)
 
+    @mock.patch.object(spoof.HTTPRequestHandler, 'handleRequest')
+    def test_Handler_raises_exception_on_CONNECT_with_content(self, mock_req):
+        mock_req.return_value = (None, (200, (), 'Not empty string'))
+        with self.assertRaises(RuntimeError):
+            self.handler.do_CONNECT()
+
 
 class TestHTTPServer(unittest.TestCase):
     def setUp(self):
@@ -160,7 +169,7 @@ class TestHTTPServer(unittest.TestCase):
     def test_Server_server_is_None_outside_context_manager(self):
         with spoof.HTTPServer() as httpd:
             pass
-        httpd.server
+        self.assertIsNone(httpd.server)
 
     def test_Server_defaultResponse_returns_None(self):
         result = self.httpd.defaultResponse
@@ -171,6 +180,75 @@ class TestHTTPServer(unittest.TestCase):
         self.httpd.defaultResponse = expected
         result = self.httpd.defaultResponse
         self.assertEqual(expected, result)
+
+    def test_Server_get_timeout(self):
+        expected = self.httpd.serverClass.timeout
+        result = self.httpd.timeout
+        self.assertEqual(expected, result)
+
+    def test_Server_set_timeout(self):
+        expected = random.randint(1, 300)
+        self.httpd.timeout = expected
+        result = self.httpd.timeout
+        self.assertEqual(expected, result)
+
+    def test_Server_get_timeout_gets_server_instance(self):
+        randTimeout = random.randint(1, 300)
+        with spoof.HTTPServer() as httpd:
+            httpd.timeout = randTimeout
+            expected = httpd.server.timeout
+            result = httpd.timeout
+            self.assertEqual(expected, result)
+
+    def test_Server_set_timeout_sets_server_instance(self):
+        expected = random.randint(1, 300)
+        with spoof.HTTPServer() as httpd:
+            httpd.timeout = expected
+            result = httpd.server.timeout
+            self.assertEqual(expected, result)
+
+    def test_Server_get_upstream(self):
+        expected = None
+        result = self.httpd.upstream
+        self.assertEqual(expected, result)
+
+    def test_Server_set_upstream(self):
+        expected = True
+        self.httpd.upstream = expected
+        result = self.httpd.upstream
+        self.assertEqual(expected, result)
+
+    def test_Server_get_upstream_gets_server_instance(self):
+        randupstream = True
+        with spoof.HTTPServer() as httpd:
+            httpd.upstream = randupstream
+            expected = httpd.server.upstream
+            result = httpd.upstream
+            self.assertEqual(expected, result)
+
+    def test_Server_set_upstream_sets_server_instance(self):
+        expected = True
+        with spoof.HTTPServer() as httpd:
+            httpd.upstream = expected
+            result = httpd.server.upstream
+            self.assertEqual(expected, result)
+
+
+class TestUpstreamServer(unittest.TestCase):
+    def setUp(self):
+        self.httpd = spoof.HTTPUpstreamServer()
+
+    def tearDown(self):
+        self.httpd = None
+
+    def test_Upstream_raises_RuntimeError_if_already_running(self):
+        with self.assertRaises(RuntimeError):
+            self.httpd.start()
+            self.httpd.start()
+
+    def test_Upstream_raises_RuntimeError_if_already_stopped(self):
+        with self.assertRaises(RuntimeError):
+            self.httpd.stop()
 
 
 class TestSSLContext(unittest.TestCase):
@@ -183,4 +261,4 @@ class TestSSLContext(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+        unittest.main()
