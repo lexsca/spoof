@@ -143,18 +143,15 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
             if response[2]:
                 message = 'CONNECT requests cannot have response content'
                 raise RuntimeError(message)
-            self.sendRequestUpstream(request, self.server.upstream)
+            self.sendRequestUpstream(self.server.upstream)
 
-    def sendRequestUpstream(self, request, upstream):
+    def sendRequestUpstream(self, upstream):
         """Send request to the upstream handler, first wrapping socket
         with `ssl.SSLContext` instance if present in the upstream server.
         """
         sock = self.request
         if upstream.sslContext is not None:
-            host = request.headers.get('host', None)
-            sock = upstream.sslContext.wrap_socket(
-                sock, server_side=True, server_hostname=host
-            )
+            sock = upstream.sslContext.wrap_socket(sock, server_side=True)
         upstream.handlerClass(sock, self.client_address, upstream.server)
         sock.close()
 

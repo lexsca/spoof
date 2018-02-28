@@ -1,6 +1,7 @@
 from collections import namedtuple
 from io import BytesIO
 import random
+import ssl
 import unittest
 
 import mock
@@ -26,6 +27,7 @@ class TestHTTPRequestHandler(unittest.TestCase):
             request.client_address = ('127.0.0.1', 8888)
             request.raw_requestline = request.rfile.readline(65537)
             request.parse_request()
+            request.request = None
         mock.patch.object(
             spoof.HTTPRequestHandler, '__init__', fakeInit
         ).start()
@@ -139,6 +141,14 @@ class TestHTTPRequestHandler(unittest.TestCase):
         mock_req.return_value = (None, (200, (), 'Not empty string'))
         with self.assertRaises(RuntimeError):
             self.handler.do_CONNECT()
+
+    def test_Handler_sendRequestUpstream_does_not_set_hostname(self):
+        upstream = mock.Mock()
+        upstream.sslContext = mock.Mock(spec=ssl.SSLContext)
+        self.handler.sendRequestUpstream(upstream)
+        upstream.sslContext.wrap_socket.assert_called_once_with(
+            self.handler.request, server_side=True
+        )
 
 
 class TestHTTPServer(unittest.TestCase):

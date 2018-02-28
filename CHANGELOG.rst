@@ -1,5 +1,5 @@
 
-1.1.0 (2018-02-XX)
+1.1.1 (2018-02-28)
 ==================
 
 - Deconstruct `spoof.HTTPUpstreamServer.handleRequest` to allow more control

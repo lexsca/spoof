@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
   name='spoof',
-  version='1.1.0',
+  version='1.1.1',
   description='HTTP server for testing environments',
   long_description=open('README.rst').read(),
   author='Lex Scarisbrick',
