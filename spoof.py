@@ -16,6 +16,7 @@ except ImportError:
     # class renamed in python 3
     import queue as Queue
 import re
+import select
 import socket
 import ssl
 import subprocess
@@ -143,17 +144,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
             if response[2]:
                 message = 'CONNECT requests cannot have response content'
                 raise RuntimeError(message)
-            self.sendRequestUpstream(self.server.upstream)
-
-    def sendRequestUpstream(self, upstream):
-        """Send request to the upstream handler, first wrapping socket
-        with `ssl.SSLContext` instance if present in the upstream server.
-        """
-        sock = self.request
-        if upstream.sslContext is not None:
-            sock = upstream.sslContext.wrap_socket(sock, server_side=True)
-        upstream.handlerClass(sock, self.client_address, upstream.server)
-        sock.close()
+            self.server.upstream.handleRequest(self.request, request)
 
     def handle_one_request(self, *args, **kwargs):
         """Overrides base class to squelch TLSV1_ALERT_UNKNOWN_CA exception
@@ -312,7 +303,9 @@ class HTTPServer(object):
             self.server.socket = self.server.sslContext.wrap_socket(
                 self.server.socket, server_side=True
             )
-        self.thread = threading.Thread(target=self.server.serve_forever)
+        name = getattr(type(self), '__name__')
+        self.thread = threading.Thread(target=self.server.serve_forever,
+                                       name=name)
         self.thread.start()
 
     def stop(self):
@@ -324,6 +317,7 @@ class HTTPServer(object):
         self.server.server_close()
         if self.thread is not None:
             self.thread.join()
+            self.thread = None
         self.server = None
 
     def __enter__(self):
@@ -448,37 +442,63 @@ class HTTPServer6(HTTPServer):
 
 class HTTPUpstreamServer(HTTPServer):
     """Handle upstream requests from `HTTPRequestHandler`, which will
-    directly invoke the `handlerClass` to handle the proxy request.
+    directly invoke the `handleRequest` method to proxy the request.
     """
+    def __init__(self, *args, **kwargs):
+        """Override base class method to set proxy attributes."""
+        super(HTTPUpstreamServer, self).__init__(*args, **kwargs)
+        self.proxyThreads = []
+        self.selectTimeout = 0.1
+        self.recvSize = 4096
 
-    @classmethod
-    def configureServerClass(cls, host):
-        """Override base class method to create fake serverClass."""
-        sourceClass = cls.serverClass
-        serverClass = type(
-            sourceClass.__name__, (object, ), dict()
+    def stop(self, *args, **kwargs):
+        """Override base class method to stop proxy threads."""
+        for proxy in self.proxyThreads:
+            proxy.run.clear()
+            proxy.thread.join()
+        self.proxyThreads = []
+        super(HTTPUpstreamServer, self).stop(*args, **kwargs)
+
+    def proxyRequest(self, client, server, run):
+        """This method expects to be run in a thread. It takes a client
+        socket and proxies the request to the server socket.
+
+        :client:  downstream `socket.socket` instance
+        :server:  upstream `socket.socket` instance
+        :run:     `threading.Event` instance control the proxy loop
+        """
+        select_args = ([client, server], [], [], self.selectTimeout)
+        writer = {client: server, server: client}
+        while run.is_set():
+            read, _, _ = select.select(*select_args)
+            for sock in read:
+                chunk = sock.recv(self.recvSize)
+                if not chunk:
+                    run.clear()
+                    break
+                writer[sock].sendall(chunk)
+        for sock in select_args[0]:
+            sock.shutdown(socket.SHUT_WR)
+            sock.close()
+
+    def handleRequest(self, client, request):
+        """Handle upstream request. Starts thread with connection to
+        upstream server and proxies request.
+
+        :client:  downstream `socket.socket` instance
+        :request: `HTTPRequestHandler.reportRequestEnv` instance
+        """
+        server = socket.create_connection(self.serverAddress, self.timeout)
+        run = threading.Event()
+        run.set()
+        name = getattr(type(self), '__name__')
+        thread = threading.Thread(target=self.proxyRequest, name=name,
+                                  args=(client, server, run))
+        self.proxyThreads.append(
+            collections.namedtuple('Request', 'thread run')(thread, run)
         )
-        serverClass.address_family = cls.addressFamily
-        serverClass.serverName = host
-        return serverClass
-
-    def start(self):
-        """Override base class method to start fake server."""
-        if self.server is not None:
-            message = 'server at {0} already started'.format(self.url)
-            raise RuntimeError(message)
-        else:
-            self.server = self.serverClass()
-            self.server.upstream = self._upstream
-            self.server.server_name = self.address
-            self.server.server_port = self.port
-
-    def stop(self):
-        """Override base class method to stop fake server."""
-        if self.server is None:
-            message = 'server at {0} already stopped'.format(self.url)
-            raise RuntimeError(message)
-        self.server = None
+        thread.start()
+        thread.join()
 
 
 class SSLContext(object):

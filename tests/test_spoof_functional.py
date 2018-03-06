@@ -1,10 +1,14 @@
+import functools
 import json
 import os
+import socket
+import ssl
 import unittest
 
 import requests
 
 import spoof
+import utils
 
 
 class BaseMixin(unittest.TestCase):
@@ -138,51 +142,105 @@ class TestRequest(BaseMixin):
 
 
 class TestProxy(BaseMixin):
+    @classmethod
+    def setUpClass(cls):
+        cls.cert, cls.key = spoof.SSLContext.createSelfSignedCert(
+            commonName='*.com'
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.unlink(cls.cert, cls.key)
+
+    def setUp(self):
+        self.httpd = spoof.HTTPServer()
+        self.httpd.start()
+        self.session = requests.Session()
+
+    def tearDown(self):
+        self.httpd.stop()
+        self.httpd = None
+        self.session = None
+
     def test_spoof_connect_https_proxy(self):
-        cert, key = spoof.SSLContext.createSelfSignedCert(commonName='*.com')
         expected = upstream_content = b'windage-gelding-spume'
         upstream_url = 'https://google.com/'
-        self.addCleanup(self.unlink, cert, key)
-        sslContext = spoof.SSLContext.fromCertChain(cert, key)
-        httpd = spoof.HTTPServer()
-        httpd.upstream = spoof.HTTPUpstreamServer(sslContext=sslContext)
-        httpd.upstream.defaultResponse = [200, [], upstream_content]
-        httpd.defaultResponse = [200, [('X-Fake-Proxy', 'True')], '']
-        httpd.upstream.start()
-        httpd.start()
-        session = requests.Session()
-        session.verify = cert
-        proxies = {'https': httpd.url}
-        result = session.get(upstream_url, proxies=proxies).content
-        httpd.upstream.stop()
-        httpd.stop()
+        sslContext = spoof.SSLContext.fromCertChain(self.cert, self.key)
+        self.httpd.upstream = spoof.HTTPUpstreamServer(sslContext=sslContext)
+        self.httpd.upstream.defaultResponse = [200, [], upstream_content]
+        self.httpd.defaultResponse = [200, [('X-Fake-Proxy', 'True')], '']
+        self.httpd.upstream.start()
+        self.session.verify = self.cert
+        proxies = {'https': self.httpd.url}
+        result = self.session.get(upstream_url, proxies=proxies).content
+        self.httpd.upstream.stop()
         self.assertEqual(expected, result)
 
     def test_spoof_http_proxy_content(self):
         expected = upstream_content = b'aimless-scanty-thyself'
         upstream_url = 'http://google.com/'
-        httpd = spoof.HTTPServer()
-        httpd.defaultResponse = [200, [], upstream_content]
-        httpd.start()
-        session = requests.Session()
-        proxies = {'http': httpd.url}
-        result = session.get(upstream_url, proxies=proxies).content
-        httpd.stop()
+        self.httpd.defaultResponse = [200, [], upstream_content]
+        proxies = {'http': self.httpd.url}
+        result = self.session.get(upstream_url, proxies=proxies).content
         self.assertEqual(expected, result)
 
     def test_spoof_http_proxy_path(self):
         upstream_content = b'stimuli-liberia-parable'
         expected = upstream_url = 'http://armour-lipstick-booze.com/'
-        httpd = spoof.HTTPServer()
-        httpd.defaultResponse = [200, [], upstream_content]
+        self.httpd.defaultResponse = [200, [], upstream_content]
+        proxies = {'http': self.httpd.url}
+        self.session.get(upstream_url, proxies=proxies).content
+        result = self.httpd.requests[-1].path
+        self.assertEqual(expected, result)
+
+    @unittest.skipUnless(hasattr(ssl, 'MemoryBIO'), 'requires ssl.MemoryBIO')
+    def test_spoof_https_site_through_https_proxy(self):
+        # This is a proof-of-concept for proxying HTTPS requests through an
+        # HTTPS server. Typically, HTTPS requests are proxied via CONNECT verb
+        # on a plain-text HTTP server. This means proxy credentials are sent
+        # in the clear, as well as the intended destination. Proxying via HTTPS
+        # allows these to be nominally protected. At this time, no major
+        # HTTP libraries support proxying HTTPS requests through HTTPS servers,
+        # so the actual request portion of the test quite crude, reading and
+        # writing directly to sockets. The use of the `ssl.SSLContext.wrap_bio`
+        # method allows arbitrary SSL I/O, provided data is written to and read
+        # out of BIO instances. This is required as it's not possible to for an
+        # `ssl.SSLContext` socket to wrap another `ssl.SSLContext` socket.
+        expected = upstream_content = b'octet-comeback-squirmy'
+        chunk_size = 4096
+        httpd = spoof.HTTPServer(
+            sslContext=spoof.SSLContext.fromCertChain(self.cert, self.key)
+        )
+        httpd.defaultResponse = [200, [], '']
         httpd.start()
-        session = requests.Session()
-        proxies = {'http': httpd.url}
-        session.get(upstream_url, proxies=proxies).content
-        result = httpd.requests[-1].path
+        httpd.upstream = spoof.HTTPUpstreamServer(
+            sslContext=spoof.SSLContext.fromCertChain(self.cert, self.key)
+        )
+        httpd.upstream.defaultResponse = [200, [], upstream_content]
+        httpd.upstream.start()
+        client = ssl.create_default_context(cafile=self.cert).wrap_socket(
+            socket.create_connection(httpd.serverAddress),
+            server_hostname=httpd.address
+        )
+        client.sendall(b'CONNECT google.com HTTP/1.0\r\n\r\n')
+        client.recv(chunk_size)  # response headers
+        tunnel_in = ssl.MemoryBIO()
+        tunnel_out = ssl.MemoryBIO()
+        tunnel = ssl.create_default_context(cafile=self.cert).wrap_bio(
+            tunnel_in, tunnel_out, server_hostname='google.com'
+        )
+        tunnel_cmd = functools.partial(
+            utils.ssl_io_loop, client, tunnel_in, tunnel_out
+        )
+        tunnel_cmd(tunnel.do_handshake)
+        tunnel_cmd(tunnel.write, b'GET / HTTP/1.0\r\n\r\n')
+        tunnel_cmd(tunnel.read, chunk_size)  # response headers
+        result = tunnel_cmd(tunnel.read, chunk_size)
+        client.close()
+        httpd.upstream.stop()
         httpd.stop()
         self.assertEqual(expected, result)
 
 
 if __name__ == '__main__':
-        unittest.main()
+    unittest.main()

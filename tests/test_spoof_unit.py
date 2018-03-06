@@ -1,7 +1,6 @@
 from collections import namedtuple
 from io import BytesIO
 import random
-import ssl
 import unittest
 
 import mock
@@ -142,14 +141,6 @@ class TestHTTPRequestHandler(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.handler.do_CONNECT()
 
-    def test_Handler_sendRequestUpstream_does_not_set_hostname(self):
-        upstream = mock.Mock()
-        upstream.sslContext = mock.Mock(spec=ssl.SSLContext)
-        self.handler.sendRequestUpstream(upstream)
-        upstream.sslContext.wrap_socket.assert_called_once_with(
-            self.handler.request, server_side=True
-        )
-
 
 class TestHTTPServer(unittest.TestCase):
     def setUp(self):
@@ -271,4 +262,4 @@ class TestSSLContext(unittest.TestCase):
 
 
 if __name__ == '__main__':
-        unittest.main()
+    unittest.main()

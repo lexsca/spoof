@@ -1,4 +1,13 @@
 
+1.2.0 (2018-03-05)
+==================
+
+- Refactor `spoof.HTTPUpstreamServer` to be a proper server, instead of
+  simply wrapping the socket in the request handler.
+- Add support for proxying HTTPS requests through an HTTPS server via
+  CONNECT method.
+- Add supporting tests
+
 1.1.1 (2018-02-28)
 ==================
 
@@ -14,7 +23,6 @@
 - Reformat code to pass Flake8
 - Add `.python-version` pyenv file for testing convenience
 - Re-run tests on latest versions of Python
-
 
 1.0.5 (2018-02-19)
 ==================
