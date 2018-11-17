@@ -8,10 +8,11 @@ Compatibility
 
 Spoof was tested with the following versions of Python (2.6.x and 3.3.x omitted due to SSL compatibility issues):
 
--  2.7.14
--  3.4.7
+-  3.7.1
+-  3.6.7
 -  3.5.4
--  3.6.4
+-  3.4.7
+-  2.7.15
 
 Installation
 ~~~~~~~~~~~~

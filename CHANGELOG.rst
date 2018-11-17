@@ -1,3 +1,10 @@
+1.3.0 (2018-11-16)
+==================
+
+- Update Python versions to test via pyenv and tox: 3.7.1, 3.6.7, 3.5.4, 3.4.7, 2.7.15
+- Add `contentEncoding` convenience property to request object
+- Queued responses and `defaultResponse` can now be callbacks!
+- Update tests
 
 1.2.0 (2018-03-05)
 ==================

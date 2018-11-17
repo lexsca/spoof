@@ -66,6 +66,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
                'queryString': None,
                'content': None,
                'contentType': self.headers.get('content-type', None),
+               'contentEncoding': self.headers.get('content-encoding', None),
                'contentLength': int(self.headers.get('content-length', 0))}
         if (env['contentLength'] > 0 and
                 env['contentLength'] <= self.maxRequestLength):
@@ -120,7 +121,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
                 HTTP_REQUEST_ENTITY_TOO_LARGE, [],
                 'Content-Length > {0}\n\n'.format(self.maxRequestLength)
             ]
-        return response
+        return response(request) if callable(response) else response
 
     def handleRequest(self):
         """Sends spoofed HTTP response and reports request environment."""
@@ -421,6 +422,7 @@ class HTTPServer(object):
 
         [200, [('Content-Type', 'application/json')], '{"success": true }']
         """
+        response = staticmethod(response) if callable(response) else response
         self.handlerClass.defaultResponse = response
 
     def queueResponse(self, response):

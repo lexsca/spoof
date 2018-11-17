@@ -1,6 +1,7 @@
 import functools
 import json
 import os
+import random
 import socket
 import ssl
 import unittest
@@ -90,6 +91,14 @@ class TestRequest(BaseMixin):
         result = json.loads(self.httpd.requests[-1].content.decode('utf-8'))
         self.assertEqual(expected, result)
 
+    def test_spoof_returns_request_contentEncoding(self):
+        expected = contentEncoding = 'soffit-snell-swore'
+        headers = {'Content-Encoding': contentEncoding}
+        self.session.post(self.httpd.url + self.path, json=self.data,
+                          headers=headers)
+        result = self.httpd.requests[-1].contentEncoding
+        self.assertEqual(expected, result)
+
     def test_spoof_returns_request_contentType(self):
         contentType = 'application/json'
         self.session.post(self.httpd.url + self.path, json=self.data)
@@ -140,12 +149,36 @@ class TestRequest(BaseMixin):
         with self.assertRaises(requests.ConnectionError):
             self.session.get(httpd.url + '/random')
 
+    def test_spoof_allows_callable_defaultResponse(self):
+        self.httpd.reset()
+        status_code = random.randint(200, 299)
+
+        def callback(this):
+            return [status_code, [], this.path]
+
+        self.httpd.defaultResponse = callback
+        request = self.session.get(self.httpd.url + '/infight-canaille-scorch')
+        self.assertEqual(request.status_code, status_code)
+        self.assertEqual(request.content.decode(), '/infight-canaille-scorch')
+
+    def test_spoof_allows_callable_queued_response(self):
+        self.httpd.reset()
+        status_code = random.randint(200, 299)
+
+        def callback(this):
+            return [status_code, [], this.path]
+
+        self.httpd.queueResponse(callback)
+        request = self.session.get(self.httpd.url + '/plasma-nausea-shifty')
+        self.assertEqual(request.status_code, status_code)
+        self.assertEqual(request.content.decode(), '/plasma-nausea-shifty')
+
 
 class TestProxy(BaseMixin):
     @classmethod
     def setUpClass(cls):
         cls.cert, cls.key = spoof.SSLContext.createSelfSignedCert(
-            commonName='*.com'
+            commonName='google.com'
         )
 
     @classmethod
