@@ -34,9 +34,13 @@ Example usage
 
 .. code:: python
 
+  import json
   import unittest
+
   import spoof
+
   import thing
+
 
   class TestThing(unittest.TestCase):
     httpd = None
@@ -76,16 +80,27 @@ Example usage
       self.altThing = None
 
     def test_thingUsingSpoof(self):
-      response1 = [200, [('Content-Type', 'application/json')], '{"id": 1111}']
-      response2 = [200, [('Content-Type', 'application/json')], '{"id": 2222}']
-      self.httpd.queueResponse(response1)
-      self.httpd.queueResponse(response2)
+      responses = [
+        [200, [('Content-Type', 'application/json')], '{"id": 1111}'],
+        [200, [('Content-Type', 'application/json')], '{"id": 2222}'],
+      ]
+      self.httpd.queueResponse(*responses)
       # HTTP debug logging, if needed
       self.httpd.debug = True
       self.thing.requiringTwoJSONresponses()
       lastRequest = self.httpd.requests[-1]
       expectedContent = '{"action": "rename", "old": 1111, "new": 2222}'
       self.assertEqual(expectedContent, lastRequest.content)
+
+    def test_thingUsingSpoofCallback(self):
+      def callback(request):
+        content = json.dumps({'path': request.path})
+        return [200, [('Content-Type', 'application/json')], content]
+      self.httpd.queueResponse(callback)
+      self.thing.jsonRequestPath('/some/path')
+      result = json.loads(self.httpd.requests[-1].content)
+      self.assertEqual(result['path'], '/some/path')
+
 
 Squelching SSL warnings
 -----------------------
@@ -104,7 +119,7 @@ property in `requests.Session` to trust the certificate:
     cert, key = spoof.SSLContext.createSelfSignedCert()
     sslContext = spoof.SSLContext.fromCertChain(cert, key)
     httpd = spoof.HTTPServer(sslContext=sslContext)
-    httpd.queueResponse((200, (), 'OK'))
+    httpd.queueResponse([200, [], 'OK'])
     httpd.start()
 
     # trust self-signed certificate

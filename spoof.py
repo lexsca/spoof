@@ -52,10 +52,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
     debug = False
 
     def reportRequestEnv(self):
-        """Returns namedtuple containing request report. It's a report
-        because when it's available to the user, an HTTP response has
-        already been sent.
-        """
+        """Returns namedtuple containing request report."""
         env = {'method': self.command,
                'uri': self.path,
                'protocol': self.request_version,
@@ -362,29 +359,28 @@ class HTTPServer(object):
 
     @property
     def requests(self):
-        """Returns list of namedtuple request report instances.
-        They're called reports, because they're no longer actionable.
-        The HTTP server sends responses unconditionally and reports
-        the request after the fact.
+        """Returns list of namedtuple request instances with the
+        following properties:
 
-        `HTTPRequestHandler.reportRequestEnv` namedtuple attributes:
-        :method:        Request method (e.g. GET, POST, HEAD)
-        :uri:           Raw URI path and query string, if present
-        :protocol:      Protocol version client used to send request
-                        (e.g. HTTP/1.0)
-        :serverName:    Hostname of server
-        :serverPort:    TCP/IP port of server
-        :headers:       `mimetools.Message` instance with all request
-                        headers; to get specific header use:
-                        `headers.get(headerName, defaultValue)`
-        :path:          Decoded URI path, without query string
-        :queryString:   Anything in URI after URI_QUERY_SEPARATOR,
-                        `None` if missing
-        :content:       string containing request content if present,
-                        `None` if missing
-        :contentType:   Content-Type header value if present,
-                        `None` if missing
-        :contentLength: Content-Length header integer value, 0 if missing
+        :method:          Request method (e.g. GET, POST, HEAD)
+        :uri:             Raw URI path and query string, if present
+        :protocol:        Protocol version client used to send request
+                           (e.g. HTTP/1.0)
+        :serverName:      Hostname of server
+        :serverPort:      TCP/IP port of server
+        :headers:         `mimetools.Message` instance with all request
+                          headers; to get specific header use:
+                          `headers.get(headerName, defaultValue)`
+        :path:            Decoded URI path, without query string
+        :queryString:     Anything in URI after URI_QUERY_SEPARATOR,
+                          `None` if missing
+        :content:         string containing request content if present,
+                          `None` if missing
+        :contentType:     Content-Type header value if present,
+                          `None` if missing
+        :contentEncoding: Content-Encoding header value if present,
+                          `None` if missing
+        :contentLength:   Content-Length header integer value, 0 if missing
         """
         try:
             while True:
@@ -421,19 +417,25 @@ class HTTPServer(object):
         Example:
 
         [200, [('Content-Type', 'application/json')], '{"success": true }']
+
+        Alternatively, a callable object may used as a response. It should
+        accept a request instance as its only argument and it should return
+        the response format noted above.  See `requests` for details on the
+        request instance.
         """
         response = staticmethod(response) if callable(response) else response
         self.handlerClass.defaultResponse = response
 
-    def queueResponse(self, response):
-        """Queues response to be returned once by HTTP server. If no
-        esponses are queued, the handler class defaultResponse will be sent.
-        If defaultResponse is not set, and no responses are queued,
-        errorResponse is sent.
+    def queueResponse(self, *responses):
+        """Queues one or more response to be returned by HTTP server.
+        If no responses are queued, the handler class defaultResponse
+        will be sent. If defaultResponse is not set, and no responses
+        are queued, the errorResponse is sent.
 
         See `defaultResponse` for response format.
         """
-        self.responseContentQueue.put_nowait(response)
+        for response in responses:
+            self.responseContentQueue.put_nowait(response)
 
 
 class HTTPServer6(HTTPServer):

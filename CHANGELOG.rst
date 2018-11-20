@@ -1,3 +1,11 @@
+1.4.0 (2018-11-18)
+==================
+
+- Allow queueing multiple responses at once
+- Update README
+- Update docstrings
+- Update tests
+
 1.3.0 (2018-11-16)
 ==================
 

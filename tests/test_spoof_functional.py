@@ -40,7 +40,7 @@ class TestRequest(BaseMixin):
     def setUp(self):
         self.response = [240, [('X-Server', 'IPv4')], 'This is IPv4']
         self.response6 = [260, [('X-Server', 'IPv6')], 'This is IPv6']
-        self.httpd.queueResponse(self.response)
+        self.httpd.queueResponse(*[self.response])
         self.session = requests.Session()
         self.session.verify = self.cert
         self.httpd6.queueResponse(self.response6)
