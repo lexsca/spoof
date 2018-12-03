@@ -1,14 +1,18 @@
 Spoof
 =====
 
-|badge1| |badge2| |badge3|
+|badge1| |badge2| |badge3| |badge4|
 
-.. |badge1| image:: https://img.shields.io/github/license/lexsca/spoof.svg
+.. |badge1| image:: https://img.shields.io/pypi/v/spoof.svg
+  :target: https://pypi.org/project/spoof/
+
+.. |badge2| image:: https://img.shields.io/github/license/lexsca/spoof.svg
   :target: https://github.com/lexsca/spoof/blob/master/LICENSE
 
-.. |badge2| image:: https://img.shields.io/pypi/pyversions/spoof.svg
+.. |badge3| image:: https://img.shields.io/pypi/pyversions/spoof.svg
+  :target: https://pypi.org/project/spoof/
 
-.. |badge3| image:: https://codecov.io/gh/lexsca/spoof/branch/master/graph/badge.svg
+.. |badge4| image:: https://codecov.io/gh/lexsca/spoof/branch/master/graph/badge.svg
   :target: https://codecov.io/gh/lexsca/spoof
 
 On-demand HTTP server for use in test environments where mocking underlying calls isn't an option or where it's necessary to have an actual HTTP server listening on a socket (e.g. testing IPv6 connectivity).  Multiple HTTP servers can be run concurrently, and by default the port number is the next available unused port.
