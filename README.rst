@@ -20,7 +20,7 @@ On-demand HTTP server for use in test environments where mocking underlying call
 Compatibility
 ~~~~~~~~~~~~~
 
-Spoof was tested with the following versions of Python (2.6.x and 3.3.x omitted due to SSL compatibility issues):
+Spoof is tested against the following versions of Python (2.6.x and 3.3.x omitted due to SSL compatibility issues):
 
 -  3.7.1
 -  3.6.7
@@ -28,23 +28,8 @@ Spoof was tested with the following versions of Python (2.6.x and 3.3.x omitted 
 -  3.4.7
 -  2.7.15
 
-Installation
-~~~~~~~~~~~~
-
-Install from source:
-
-::
-
-  python setup.py install
-
-Install from PyPI:
-
-::
-
-  pip install spoof
-
-Example usage
--------------
+Quickstart
+----------
 
 .. code:: python
 
