@@ -27,6 +27,7 @@ setup(
     'Topic :: Software Development :: Testing :: Traffic Generation'
   ],
   url='https://github.com/lexsca/spoof.git',
+  package_dir={'': 'src'},
   py_modules=['spoof'],
   setup_requires=['pytest-runner'],
   tests_require=['pytest', 'pytest-cov', 'mock', 'requests'],
