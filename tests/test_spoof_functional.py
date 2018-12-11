@@ -22,10 +22,10 @@ class BaseMixin(unittest.TestCase):
 class TestRequest(BaseMixin):
     @classmethod
     def setUpClass(cls):
-        cls.cert, cls.key = spoof.SSLContext.createSelfSignedCert()
-        sslContext = spoof.SSLContext.fromCertChain(cls.cert, cls.key)
-        cls.httpd = spoof.HTTPServer(sslContext=sslContext)
-        cls.httpd6 = spoof.HTTPServer6('::1', sslContext=sslContext)
+        cls.selfSigned = spoof.SelfSignedSSLContext()
+        cls.sslContext = cls.selfSigned.sslContext
+        cls.httpd = spoof.HTTPServer(sslContext=cls.sslContext)
+        cls.httpd6 = spoof.HTTPServer6('::1', sslContext=cls.sslContext)
         cls.httpd.start()
         cls.httpd6.start()
 
@@ -35,14 +35,14 @@ class TestRequest(BaseMixin):
         cls.httpd6.stop()
         cls.httpd = None
         cls.httpd6 = None
-        cls.unlink(cls.cert, cls.key)
+        cls.selfSigned.cleanup()
 
     def setUp(self):
         self.response = [240, [('X-Server', 'IPv4')], 'This is IPv4']
         self.response6 = [260, [('X-Server', 'IPv6')], 'This is IPv6']
         self.httpd.queueResponse(*[self.response])
         self.session = requests.Session()
-        self.session.verify = self.cert
+        self.session.verify = self.selfSigned.certFile
         self.httpd6.queueResponse(self.response6)
         self.path = '/v4'
         self.path6 = '/v6'
@@ -151,7 +151,7 @@ class TestRequest(BaseMixin):
 
     def test_spoof_allows_callable_defaultResponse(self):
         self.httpd.reset()
-        status_code = random.randint(200, 299)
+        status_code = random.randint(205, 299)
 
         def callback(this):
             return [status_code, [], this.path]
@@ -163,7 +163,7 @@ class TestRequest(BaseMixin):
 
     def test_spoof_allows_callable_queued_response(self):
         self.httpd.reset()
-        status_code = random.randint(200, 299)
+        status_code = random.randint(205, 299)
 
         def callback(this):
             return [status_code, [], this.path]
@@ -234,7 +234,7 @@ class TestProxy(BaseMixin):
         # in the clear, as well as the intended destination. Proxying via HTTPS
         # allows these to be nominally protected. At this time, no major
         # HTTP libraries support proxying HTTPS requests through HTTPS servers,
-        # so the actual request portion of the test quite crude, reading and
+        # so the actual request portion of the test is quite crude, reading and
         # writing directly to sockets. The use of the `ssl.SSLContext.wrap_bio`
         # method allows arbitrary SSL I/O, provided data is written to and read
         # out of BIO instances. This is required as it's not possible to for an
@@ -273,6 +273,16 @@ class TestProxy(BaseMixin):
         httpd.upstream.stop()
         httpd.stop()
         self.assertEqual(expected, result)
+
+
+class TestSelfSignedSSLContext(BaseMixin):
+    def test_context_manager_returns_ssl_context(self):
+        with spoof.SelfSignedSSLContext() as selfSigned:
+            self.assertIsInstance(selfSigned.sslContext, ssl.SSLContext)
+            self.assertTrue(os.path.exists(selfSigned.keyFile))
+            self.assertTrue(os.path.exists(selfSigned.certFile))
+        self.assertFalse(os.path.exists(selfSigned.keyFile))
+        self.assertFalse(os.path.exists(selfSigned.certFile))
 
 
 if __name__ == '__main__':

@@ -607,3 +607,27 @@ class SSLContext(object):
         os.write(fileDesc, config)
         os.close(fileDesc)
         return filePath
+
+
+class SelfSignedSSLContext(SSLContext):
+    """Provides context manager for creating self-signed certificate
+    SSL context. Uses same arguments as `SSLContext.createSelfSignedCert`.
+    """
+    def __init__(self, *args, **kwargs):
+        certFile, keyFile = self.createSelfSignedCert(*args, **kwargs)
+        self.sslContext = self.fromCertChain(certFile, keyFile)
+        self.keyFile = keyFile
+        self.certFile = certFile
+
+    def cleanup(self):
+        """Remove temporary key and certificate files."""
+        attrs = ['keyFile', 'certFile']
+        for path in [getattr(self, attr, None) for attr in attrs]:
+            if path:
+                os.unlink(path)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        self.cleanup()

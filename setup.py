@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
   name='spoof',
-  version='1.4.0',
+  version='1.5.0',
   description='HTTP server for testing environments',
   long_description=open('README.rst').read(),
   author='Lex Scarisbrick',
@@ -29,6 +29,6 @@ setup(
   url='https://github.com/lexsca/spoof.git',
   package_dir={'': 'src'},
   py_modules=['spoof'],
-  setup_requires=['pytest-runner'],
-  tests_require=['pytest', 'pytest-cov', 'mock', 'requests'],
+  setup_requires=['pytest-runner', 'sphinx', 'sphinx-readable-theme'],
+  tests_require=['pytest', 'pytest-cov', 'pytest-flake8', 'mock', 'requests'],
 )

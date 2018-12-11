@@ -8,6 +8,8 @@ MANIFEST
 *.sqlite
 *.so
 __pycache__/
+_build/
+.buildinfo
 
 # Distribution
 *.egg

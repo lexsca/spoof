@@ -1,3 +1,0 @@
-Spoof
-=====
-.. py:module:: spoof

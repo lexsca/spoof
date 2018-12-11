@@ -1,108 +1,95 @@
+#####
 Spoof
-=====
+#####
 
-|badge1| |badge2| |badge3| |badge4|
+.. image:: https://img.shields.io/pypi/v/spoof.svg
+    :target: https://pypi.org/project/spoof/
 
-.. |badge1| image:: https://img.shields.io/pypi/v/spoof.svg
-  :target: https://pypi.org/project/spoof/
+.. image:: https://img.shields.io/pypi/wheel/spoof.svg
+    :target: https://pypi.org/project/spoof/
 
-.. |badge2| image:: https://img.shields.io/github/license/lexsca/spoof.svg
-  :target: https://github.com/lexsca/spoof/blob/master/LICENSE
+.. image:: https://img.shields.io/pypi/pyversions/spoof.svg
+    :target: https://pypi.org/project/spoof/
 
-.. |badge3| image:: https://img.shields.io/pypi/pyversions/spoof.svg
-  :target: https://pypi.org/project/spoof/
+.. image:: https://img.shields.io/github/license/lexsca/spoof.svg
+    :target: https://github.com/lexsca/spoof/blob/master/LICENSE
 
-.. |badge4| image:: https://codecov.io/gh/lexsca/spoof/branch/master/graph/badge.svg
-  :target: https://codecov.io/gh/lexsca/spoof
+.. image:: https://codecov.io/gh/lexsca/spoof/branch/master/graph/badge.svg
+    :target: https://codecov.io/gh/lexsca/spoof
 
-On-demand HTTP server for use in test environments where mocking underlying calls isn't an option or where it's necessary to have an actual HTTP server listening on a socket (e.g. testing IPv6 connectivity).  Multiple HTTP servers can be run concurrently, and by default the port number is the next available unused port.
+Spoof is an HTTP server written in Python for use in test environments where
+mocking underlying calls isn't an option, or where it's desirable to have an
+actual HTTP server listening on a socket. Hello, functional tests!
+
+Unlike a typical HTTP server, where specific method and path combinations are
+configured in advance, Spoof accepts *all* requests and sends either a queued
+response, a default response if the queue is empty, or an error response if no
+default response is configured. Requests can be inspected after a response is sent.
 
 Compatibility
-~~~~~~~~~~~~~
+=============
 
-Spoof is tested against the following versions of Python (2.6.x and 3.3.x omitted due to SSL compatibility issues):
+Spoof runs on Python 2.7, 3.4 to 3.7, and has no external dependencies.
 
--  3.7.1
--  3.6.7
--  3.5.4
--  3.4.7
--  2.7.15
+Multiple Spoof HTTP servers can be run concurrently, and by default, the port
+number is the next available unused port.  With OpenSSL installed, Spoof can
+also provide an SSL/TLS HTTP server.  IPv6 is fully supported.
 
 Quickstart
-----------
+==========
 
-.. code:: python
+Queue multiple responses, verify content, and request paths:
 
-  import json
-  import unittest
+.. code-block:: python
 
-  import spoof
+   import requests
+   import spoof
 
-  import thing
+   with spoof.HTTPServer() as httpd:
+       responses = [
+           [200, [('Content-Type', 'application/json')], '{"id": 1111}'],
+           [200, [('Content-Type', 'application/json')], '{"id": 2222}'],
+       ]
+       httpd.queueResponse(*responses)
+       httpd.defaultResponse = [404, [], 'Not found']
 
+       assert requests.get(httpd.url + '/path').json() == {'id': 1111}
+       assert requests.get(httpd.url + '/alt/path').json() == {'id': 2222}
+       assert requests.get(httpd.url + '/oops').status_code == 404
+       assert [r.path for r in httpd.requests] == ['/path', '/alt/path', '/oops']
 
-  class TestThing(unittest.TestCase):
-    httpd = None
-    httpd6 = None
+Set a callback as the default response:
 
-    @classmethod
-    def setUpClass(cls):
-      # X509 certificates can be expensive to generate, so it should be done
-      # infrequently.  Also, creating a new HTTP server instance with a new
-      # port number for each and every test can starve a system of available
-      # TCP/IP ports.  Because of this, creating an `HTTPServer` instance
-      # should also be done infrequently, unless the port number is static.
-      sslContext = spoof.SSLContext.selfSigned()
-      cls.httpd = spoof.HTTPServer(sslContext=sslContext)
-      cls.httpd.start()
-      # IPv6-only, if needed; `HTTPServer` also accepts IPv6 addresses
-      cls.httpd6 = spoof.HTTPServer6(sslContext=sslContext)
-      cls.httpd6.start()
+.. code-block:: python
 
-    @classmethod
-    def tearDownClass(cls):
-      cls.httpd.stop()
-      cls.httpd6.stop()
-      cls.httpd = None
-      cls.httpd6 = None
+   import requests
+   import spoof
 
-    def setUp(self):
-      # Calling `reset()` suffices to sanitize the HTTP server environment.
-      self.httpd.reset()
-      self.httpd.debug = False
-      self.thing = thing.Thing(self.httpd.address, self.httpd.port)
-      # or
-      self.altThing = thing.AltThing(self.httpd.url)
+   with spoof.HTTPServer() as httpd:
+       httpd.defaultResponse = lambda request: [200, [], request.path]
 
-    def tearDown(self):
-      self.thing = None
-      self.altThing = None
+       assert requests.get(httpd.url + '/alt').content == b'/alt'
 
-    def test_thingUsingSpoof(self):
-      responses = [
-        [200, [('Content-Type', 'application/json')], '{"id": 1111}'],
-        [200, [('Content-Type', 'application/json')], '{"id": 2222}'],
-      ]
-      self.httpd.queueResponse(*responses)
-      # HTTP debug logging, if needed
-      self.httpd.debug = True
-      self.thing.requiringTwoJSONresponses()
-      lastRequest = self.httpd.requests[-1]
-      expectedContent = '{"action": "rename", "old": 1111, "new": 2222}'
-      self.assertEqual(expectedContent, lastRequest.content)
+Test queued response with SSL:
 
-    def test_thingUsingSpoofCallback(self):
-      def callback(request):
-        content = json.dumps({'path': request.path})
-        return [200, [('Content-Type', 'application/json')], content]
-      self.httpd.queueResponse(callback)
-      self.thing.jsonRequestPath('/some/path')
-      result = json.loads(self.httpd.requests[-1].content)
-      self.assertEqual(result['path'], '/some/path')
+.. code-block:: python
+
+   import requests
+   import spoof
+
+   with spoof.SelfSignedSSLContext() as selfSigned:
+       with spoof.HTTPServer(sslContext=selfSigned.sslContext) as httpd:
+           httpd.queueResponse([200, [], 'No self-signed cert warning!'])
+           response = requests.get(httpd.url + '/path',
+                                   verify=selfSigned.certFile)
+
+           assert httpd.requests[-1].method == 'GET'
+           assert httpd.requests[-1].path == '/path'
+           assert response.content == b'No self-signed cert warning!'
 
 
-Squelching SSL warnings
------------------------
+SSL Warnings
+============
 
 Some libraries like
 `Requests <http://docs.python-requests.org/en/master/>`__ will complain
