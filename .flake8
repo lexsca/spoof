@@ -1,0 +1,6 @@
+[flake8]
+max-line-length = 100
+max-complexity = 10
+builtins = long,unicode,xrange
+import-order-style = pep8
+application-import-names = spoof
