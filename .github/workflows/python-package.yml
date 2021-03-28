@@ -8,8 +8,8 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
-      env:
-        PYTHONPATH: src
+    env:
+      PYTHONPATH: src
     strategy:
       matrix:
         python-version: [3.7, 3.8, 3.9]
