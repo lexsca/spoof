@@ -3,7 +3,7 @@ name: Preflight
 on: [push, pull_request]
 
 jobs:
-  Run checks on Python:
+  Python:
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: src
