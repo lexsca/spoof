@@ -3,13 +3,13 @@ name: Preflight
 on: [push, pull_request]
 
 jobs:
-  Preflight:
+  Run checks on Python:
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: src
     strategy:
       matrix:
-        python-version: [2.7, 3.7, 3.8, 3.9, 3.10]
+        python-version: ["2.7", "3.7", "3.8", "3.9", "3.10"]
 
     steps:
     - uses: actions/checkout@v2
