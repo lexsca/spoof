@@ -10,6 +10,7 @@ except ImportError:
     import http.server as BaseHTTPServer
 import collections
 import os
+
 try:
     import Queue
 except ImportError:
@@ -22,6 +23,7 @@ import ssl
 import subprocess
 import tempfile
 import threading
+
 try:
     from urllib import unquote
 except ImportError:
@@ -32,8 +34,8 @@ HTTP_OK = 200
 HTTP_BAD_GATEWAY = 502
 HTTP_SERVICE_UNAVAILABLE = 503
 HTTP_REQUEST_ENTITY_TOO_LARGE = 413
-RESPONSE_ENCODING = 'utf-8'
-URI_QUERY_SEPARATOR = '?'
+RESPONSE_ENCODING = "utf-8"
+URI_QUERY_SEPARATOR = "?"
 MEGABYTE = 2 ** 20
 
 
@@ -43,38 +45,43 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
     instead of an instance of the class, the `*Queue` class attributes
     must be set before passing to the HTTP server.
     """
+
     responseContentQueue = None
     requestReportQueue = None
     defaultResponse = None
-    errorResponse = [HTTP_SERVICE_UNAVAILABLE, [],
-                     'No responses queued and no default response set\n\n']
+    errorResponse = [
+        HTTP_SERVICE_UNAVAILABLE,
+        [],
+        "No responses queued and no default response set\n\n",
+    ]
     maxRequestLength = 1 * MEGABYTE
     debug = False
 
     def reportRequestEnv(self):
         """Returns namedtuple containing request report."""
-        env = {'method': self.command,
-               'uri': self.path,
-               'protocol': self.request_version,
-               'serverName': self.server.serverName,
-               'serverPort': int(self.server.server_port),
-               'headers': self.headers,
-               'path': None,
-               'queryString': None,
-               'content': None,
-               'contentType': self.headers.get('content-type', None),
-               'contentEncoding': self.headers.get('content-encoding', None),
-               'contentLength': int(self.headers.get('content-length', 0))}
-        if (env['contentLength'] > 0 and
-                env['contentLength'] <= self.maxRequestLength):
-            env['content'] = self.rfile.read(env['contentLength'])
-        if URI_QUERY_SEPARATOR in env['uri']:
+        env = {
+            "method": self.command,
+            "uri": self.path,
+            "protocol": self.request_version,
+            "serverName": self.server.serverName,
+            "serverPort": int(self.server.server_port),
+            "headers": self.headers,
+            "path": None,
+            "queryString": None,
+            "content": None,
+            "contentType": self.headers.get("content-type", None),
+            "contentEncoding": self.headers.get("content-encoding", None),
+            "contentLength": int(self.headers.get("content-length", 0)),
+        }
+        if env["contentLength"] > 0 and env["contentLength"] <= self.maxRequestLength:
+            env["content"] = self.rfile.read(env["contentLength"])
+        if URI_QUERY_SEPARATOR in env["uri"]:
             sep = URI_QUERY_SEPARATOR
-            path, _, env['queryString'] = env['uri'].partition(sep)
+            path, _, env["queryString"] = env["uri"].partition(sep)
         else:
             path = self.path
-        env['path'] = unquote(path)
-        genRequest = collections.namedtuple('SpoofRequestEnv', env.keys())
+        env["path"] = unquote(path)
+        genRequest = collections.namedtuple("SpoofRequestEnv", env.keys())
         requestEnv = genRequest(**env)
         try:
             self.requestReportQueue.put_nowait(requestEnv)
@@ -100,7 +107,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         for header in response[1]:
             self.send_header(*header)
         if responseLength:
-            self.send_header('Content-Length', responseLength)
+            self.send_header("Content-Length", responseLength)
             self.end_headers()
             try:
                 self.wfile.write(response[2])
@@ -115,8 +122,9 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         response = self.nextResponse()
         if request.contentLength > self.maxRequestLength:
             response = [
-                HTTP_REQUEST_ENTITY_TOO_LARGE, [],
-                'Content-Length > {0}\n\n'.format(self.maxRequestLength)
+                HTTP_REQUEST_ENTITY_TOO_LARGE,
+                [],
+                "Content-Length > {0}\n\n".format(self.maxRequestLength),
             ]
         return response(request) if callable(response) else response
 
@@ -129,7 +137,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
 
     def __getattr__(self, name):
         """Catches `do_COMMAND` method calls from the base class."""
-        if not re.match('^do_[A-Z]+$', name):
+        if not re.match("^do_[A-Z]+$", name):
             error = "'{0}' object has no attribute '{1}'"
             message = error.format(type(self), name)
             raise AttributeError(message)
@@ -140,7 +148,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         request, response = self.handleRequest()
         if response[0] == HTTP_OK and self.server.upstream is not None:
             if response[2]:
-                message = 'CONNECT requests cannot have response content'
+                message = "CONNECT requests cannot have response content"
                 raise RuntimeError(message)
             self.server.upstream.handleRequest(self.request, request)
 
@@ -152,8 +160,8 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         try:
             super(HTTPRequestHandler, self).handle_one_request(*args, **kwargs)
         except ssl.SSLError as error:
-            if 'TLSV1_ALERT_UNKNOWN_CA' in str(error):
-                self.log_error('SSL negotiation failed: %r', error)
+            if "TLSV1_ALERT_UNKNOWN_CA" in str(error):
+                self.log_error("SSL negotiation failed: %r", error)
             else:
                 raise
 
@@ -173,11 +181,12 @@ class HTTPServer(object):
     :handlerClass: `BaseHTTPServer.BaseHTTPRequestHandler` compatible class
     :addressFamily: integer representing network protocol (see `socket`)
     """
+
     serverClass = BaseHTTPServer.HTTPServer
     handlerClass = HTTPRequestHandler
     addressFamily = socket.AF_INET
 
-    def __init__(self, host='localhost', port=0, timeout=5, sslContext=None):
+    def __init__(self, host="localhost", port=0, timeout=5, sslContext=None):
         """
         :host: IP/IPv6 address string or FQDN string
         :port: TCP port integer (0 selects an unused port)
@@ -187,7 +196,7 @@ class HTTPServer(object):
         self._requests = []
         self._sslContext = sslContext
         self.handlerClass = self.configureHandlerClass(self.handlerClass)
-        if ':' in str(host):
+        if ":" in str(host):
             self.serverClass = HTTPServer6.configureServerClass(host)
         else:
             self.serverClass = self.configureServerClass(host)
@@ -211,10 +220,9 @@ class HTTPServer(object):
     @property
     def url(self):
         """Returns URL string to connect to this server instance."""
-        protocol = 'http' if self.sslContext is None else 'https'
-        address = ('[{0}]'.format(self.address) if ':' in self.address
-                   else self.address)
-        return '{0}://{1}:{2}'.format(protocol, address, self.port)
+        protocol = "http" if self.sslContext is None else "https"
+        address = "[{0}]".format(self.address) if ":" in self.address else self.address
+        return "{0}://{1}:{2}".format(protocol, address, self.port)
 
     @property
     def sslContext(self):
@@ -264,9 +272,7 @@ class HTTPServer(object):
         :host: hostname string of server
         """
         sourceClass = cls.serverClass
-        serverClass = type(
-            sourceClass.__name__, (sourceClass, object), dict()
-        )
+        serverClass = type(sourceClass.__name__, (sourceClass, object), dict())
         serverClass.address_family = cls.addressFamily
         serverClass.serverName = host
         return serverClass
@@ -278,9 +284,7 @@ class HTTPServer(object):
         To keep the handler class unique to each `Spoof` instance, `type()` is
         used to effectively create a discrete handler class and attributes.
         """
-        handlerClass = type(
-            sourceClass.__name__, (sourceClass, object), dict()
-        )
+        handlerClass = type(sourceClass.__name__, (sourceClass, object), dict())
         self.responseContentQueue = Queue.Queue()
         self.requestReportQueue = Queue.Queue()
         handlerClass.responseContentQueue = self.responseContentQueue
@@ -290,26 +294,24 @@ class HTTPServer(object):
     def start(self):
         """Starts HTTP server thread."""
         if self.server is not None:
-            message = 'server at {0} already started'.format(self.url)
+            message = "server at {0} already started".format(self.url)
             raise RuntimeError(message)
         else:
-            self.server = self.serverClass(self.serverAddress,
-                                           self.handlerClass)
+            self.server = self.serverClass(self.serverAddress, self.handlerClass)
             self.serverAddress = self.server.server_address
             self.server.upstream = self._upstream
         if self.server.sslContext is not None:
             self.server.socket = self.server.sslContext.wrap_socket(
                 self.server.socket, server_side=True
             )
-        name = getattr(type(self), '__name__')
-        self.thread = threading.Thread(target=self.server.serve_forever,
-                                       name=name)
+        name = getattr(type(self), "__name__")
+        self.thread = threading.Thread(target=self.server.serve_forever, name=name)
         self.thread.start()
 
     def stop(self):
         """Stops HTTP server and closes socket."""
         if self.server is None:
-            message = 'server at {0} already stopped'.format(self.url)
+            message = "server at {0} already stopped".format(self.url)
             raise RuntimeError(message)
         self.server.shutdown()
         self.server.server_close()
@@ -332,7 +334,7 @@ class HTTPServer(object):
 
     def __del__(self):
         """Closes HTTP server socket when instance goes out of scope."""
-        if getattr(self, 'server', None) is not None:
+        if getattr(self, "server", None) is not None:
             self.stop()
 
     @property
@@ -347,7 +349,7 @@ class HTTPServer(object):
 
     def reset(self):
         """Reset request and response attributes."""
-        queues = ['requestReportQueue', 'responseContentQueue']
+        queues = ["requestReportQueue", "responseContentQueue"]
         for queue in [getattr(self, name) for name in queues]:
             try:
                 while True:
@@ -448,6 +450,7 @@ class HTTPUpstreamServer(HTTPServer):
     """Handle upstream requests from `HTTPRequestHandler`, which will
     directly invoke the `handleRequest` method to proxy the request.
     """
+
     def __init__(self, *args, **kwargs):
         """Override base class method to set proxy attributes."""
         super(HTTPUpstreamServer, self).__init__(*args, **kwargs)
@@ -495,12 +498,9 @@ class HTTPUpstreamServer(HTTPServer):
         server = socket.create_connection(self.serverAddress, self.timeout)
         run = threading.Event()
         run.set()
-        name = getattr(type(self), '__name__')
-        thread = threading.Thread(target=self.proxyRequest, name=name,
-                                  args=(client, server, run))
-        self.proxyThreads.append(
-            collections.namedtuple('Request', 'thread run')(thread, run)
-        )
+        name = getattr(type(self), "__name__")
+        thread = threading.Thread(target=self.proxyRequest, name=name, args=(client, server, run))
+        self.proxyThreads.append(collections.namedtuple("Request", "thread run")(thread, run))
         thread.start()
         thread.join()
 
@@ -530,8 +530,9 @@ class SSLContext(object):
         return context
 
     @classmethod
-    def createSelfSignedCert(cls, commonName='localhost', bits=2048, days=365,
-                             openssl='openssl', subjectAltNames=None):
+    def createSelfSignedCert(
+        cls, commonName="localhost", bits=2048, days=365, openssl="openssl", subjectAltNames=None
+    ):
         """Creates and returns file paths to self-signed certificate and key
         via OpenSSL command line tool.
 
@@ -540,16 +541,28 @@ class SSLContext(object):
         :days: length in days certificate is valid
         :openssl: name/path string of openssl command
         """
-        devNull = open(os.devnull, 'w')
+        devNull = open(os.devnull, "w")
         key = tempfile.mkstemp()
         cert = tempfile.mkstemp()
-        config = cls.createOpenSSLConfig(
-            commonName=commonName,
-            subjectAltNames=subjectAltNames
-        )
-        call = [openssl, 'req', '-nodes', '-x509', '-config', config,
-                '-newkey', 'rsa:' + str(bits), '-keyout', key[1],
-                '-out', cert[1], '-days', str(days), '-extensions', 'req_ext']
+        config = cls.createOpenSSLConfig(commonName=commonName, subjectAltNames=subjectAltNames)
+        call = [
+            openssl,
+            "req",
+            "-nodes",
+            "-x509",
+            "-config",
+            config,
+            "-newkey",
+            "rsa:" + str(bits),
+            "-keyout",
+            key[1],
+            "-out",
+            cert[1],
+            "-days",
+            str(days),
+            "-extensions",
+            "req_ext",
+        ]
         for fileDesc in key[0], cert[0]:
             os.close(fileDesc)
         try:
@@ -584,26 +597,26 @@ class SSLContext(object):
         """
         fileDesc, filePath = tempfile.mkstemp()
         template = [
-            '[ req ]',
-            'prompt = no',
-            'default_md = sha256',
-            'req_extensions = req_ext',
-            'distinguished_name = dn',
-            '[ dn ]',
-            'O = Test Authority',
-            'OU = Test Certificate',
-            'CN = {commonName}',
-            '[ req_ext ]',
-            'subjectAltName = @alt_names',
-            '[ alt_names ]',
-            'DNS.0 = {commonName}'
+            "[ req ]",
+            "prompt = no",
+            "default_md = sha256",
+            "req_extensions = req_ext",
+            "distinguished_name = dn",
+            "[ dn ]",
+            "O = Test Authority",
+            "OU = Test Certificate",
+            "CN = {commonName}",
+            "[ req_ext ]",
+            "subjectAltName = @alt_names",
+            "[ alt_names ]",
+            "DNS.0 = {commonName}",
         ]
-        subjectAltNames = kwargs.get('subjectAltNames')
+        subjectAltNames = kwargs.get("subjectAltNames")
         if subjectAltNames is None:
-            for idx, addr in enumerate(('::1', '127.0.0.1'), start=1):
-                template.append('IP.{0} = {1}'.format(idx, addr))
-                template.append('DNS.{0} = {1}'.format(idx, addr))
-        config = '\n'.join(template).format(**kwargs).encode()
+            for idx, addr in enumerate(("::1", "127.0.0.1"), start=1):
+                template.append("IP.{0} = {1}".format(idx, addr))
+                template.append("DNS.{0} = {1}".format(idx, addr))
+        config = "\n".join(template).format(**kwargs).encode()
         os.write(fileDesc, config)
         os.close(fileDesc)
         return filePath
@@ -613,6 +626,7 @@ class SelfSignedSSLContext(SSLContext):
     """Provides context manager for creating self-signed certificate
     SSL context. Uses same arguments as `SSLContext.createSelfSignedCert`.
     """
+
     def __init__(self, *args, **kwargs):
         certFile, keyFile = self.createSelfSignedCert(*args, **kwargs)
         self.sslContext = self.fromCertChain(certFile, keyFile)
@@ -621,7 +635,7 @@ class SelfSignedSSLContext(SSLContext):
 
     def cleanup(self):
         """Remove temporary key and certificate files."""
-        attrs = ['keyFile', 'certFile']
+        attrs = ["keyFile", "certFile"]
         for path in [getattr(self, attr, None) for attr in attrs]:
             if path:
                 os.unlink(path)

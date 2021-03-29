@@ -12,21 +12,20 @@ import time
 def ssl_io_loop(sock, incoming, outgoing, func, *args, **kwargs):
     # A simple IO loop. Call func(*args) depending on the error we get
     # (WANT_READ or WANT_WRITE) move data between the socket and the BIOs.
-    timeout = kwargs.get('timeout', 10)
-    debug = kwargs.get('debug', False)
-    recv_size = kwargs.get('recv_size', 32768)
+    timeout = kwargs.get("timeout", 10)
+    debug = kwargs.get("debug", False)
+    recv_size = kwargs.get("recv_size", 32768)
     deadline = time.monotonic() + timeout
     count = 0
     while True:
         if time.monotonic() > deadline:
-            raise RuntimeError('Timed out after {0} seconds'.format(timeout))
+            raise RuntimeError("Timed out after {0} seconds".format(timeout))
         errno = None
         count += 1
         try:
             ret = func(*args)
         except ssl.SSLError as e:
-            if e.errno not in (ssl.SSL_ERROR_WANT_READ,
-                               ssl.SSL_ERROR_WANT_WRITE):
+            if e.errno not in (ssl.SSL_ERROR_WANT_READ, ssl.SSL_ERROR_WANT_WRITE):
                 raise
             errno = e.errno
         # Get any data from the outgoing BIO irrespective of any error, and
@@ -44,6 +43,5 @@ def ssl_io_loop(sock, incoming, outgoing, func, *args, **kwargs):
             else:
                 incoming.write_eof()
     if debug:
-        sys.stdout.write("Needed %d calls to complete %s().\n"
-                         % (count, func.__name__))
+        sys.stdout.write("Needed %d calls to complete %s().\n" % (count, func.__name__))
     return ret
