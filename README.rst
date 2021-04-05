@@ -2,6 +2,10 @@
 Spoof
 #####
 
+
+.. image:: https://github.com/lexsca/spoof/actions/workflows/checks.yml/badge.svg
+    :target https://github.com/lexsca/spoof/actions/workflows/checks.yml
+
 .. image:: https://img.shields.io/pypi/v/spoof.svg
     :target: https://pypi.org/project/spoof/
 

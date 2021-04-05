@@ -1,4 +1,4 @@
-name: Preflight checks
+name: Checks
 
 on: 
   push:
