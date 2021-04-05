@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="spoof",
-    version="1.5.0",
+    version="1.5.1",
     description="HTTP server for testing environments",
     long_description=open("README.rst").read(),
     author="Lex Scarisbrick",
@@ -20,6 +20,8 @@ setup(
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
         "Topic :: Internet :: Proxy Servers ",
         "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
         "Topic :: Software Development :: Libraries :: Python Modules",
@@ -30,6 +32,4 @@ setup(
     url="https://github.com/lexsca/spoof.git",
     package_dir={"": "src"},
     py_modules=["spoof"],
-    setup_requires=["pytest-runner", "sphinx", "sphinx-readable-theme"],
-    tests_require=["pytest", "pytest-cov", "pytest-flake8", "mock", "requests"],
 )
