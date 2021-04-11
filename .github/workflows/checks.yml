@@ -55,4 +55,8 @@ jobs:
     - name: Test with pytest
       run: |
         pytest
+
+    - name: Upload coverage
+      if: matrix.python-version == "3.9"
+      run: |
         codecov
