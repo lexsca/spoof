@@ -15,11 +15,11 @@ Spoof
 .. image:: https://img.shields.io/pypi/pyversions/spoof.svg
     :target: https://pypi.org/project/spoof/
 
-.. image:: https://img.shields.io/badge/code%20style-black-000000.svg
-    :target: https://github.com/psf/black
-
 .. image:: https://img.shields.io/github/license/lexsca/spoof.svg
     :target: https://github.com/lexsca/spoof/blob/master/LICENSE
+
+.. image:: https://img.shields.io/badge/code%20style-black-000000.svg
+    :target: https://github.com/psf/black
 
 
 Spoof is an HTTP server written in Python for use in test environments where
