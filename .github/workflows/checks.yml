@@ -57,6 +57,6 @@ jobs:
         pytest
 
     - name: Upload coverage
-      if: matrix.python-version == "3.9"
+      if: matrix.python-version == 3.9
       run: |
         codecov
