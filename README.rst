@@ -6,20 +6,21 @@ Spoof
 .. image:: https://github.com/lexsca/spoof/actions/workflows/checks.yml/badge.svg
     :target: https://github.com/lexsca/spoof/actions/workflows/checks.yml
 
-.. image:: https://img.shields.io/pypi/v/spoof.svg
-    :target: https://pypi.org/project/spoof/
+.. image:: https://codecov.io/gh/lexsca/spoof/branch/main/graph/badge.svg?token=m9UMPUu2m5
+    :target: https://codecov.io/gh/lexsca/spoof
 
-.. image:: https://img.shields.io/pypi/wheel/spoof.svg
+.. image:: https://img.shields.io/pypi/v/spoof.svg
     :target: https://pypi.org/project/spoof/
 
 .. image:: https://img.shields.io/pypi/pyversions/spoof.svg
     :target: https://pypi.org/project/spoof/
 
+.. image:: https://img.shields.io/badge/code%20style-black-000000.svg
+    :target: https://github.com/psf/black
+
 .. image:: https://img.shields.io/github/license/lexsca/spoof.svg
     :target: https://github.com/lexsca/spoof/blob/master/LICENSE
 
-.. image:: https://codecov.io/gh/lexsca/spoof/branch/master/graph/badge.svg
-    :target: https://codecov.io/gh/lexsca/spoof
 
 Spoof is an HTTP server written in Python for use in test environments where
 mocking underlying calls isn't an option, or where it's desirable to have an
