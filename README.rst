@@ -6,9 +6,6 @@ Spoof
 .. image:: https://github.com/lexsca/spoof/actions/workflows/checks.yml/badge.svg
     :target: https://github.com/lexsca/spoof/actions/workflows/checks.yml
 
-.. image:: https://codecov.io/gh/lexsca/spoof/branch/main/graph/badge.svg?token=m9UMPUu2m5
-    :target: https://codecov.io/gh/lexsca/spoof
-
 .. image:: https://img.shields.io/pypi/v/spoof.svg
     :target: https://pypi.org/project/spoof/
 

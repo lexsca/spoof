@@ -34,7 +34,6 @@ jobs:
     needs: Lint
     env:
       PYTHONPATH: src
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
     strategy:
       matrix:
@@ -50,13 +49,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install pytest pytest-cov requests mock codecov
+        python -m pip install pytest pytest-cov requests mock
 
     - name: Test with pytest
       run: |
         pytest
-
-    - name: Upload coverage
-      if: matrix.python-version == 3.9
-      run: |
-        codecov
