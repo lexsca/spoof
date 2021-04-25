@@ -35,15 +35,9 @@ jobs:
     env:
       PYTHONPATH: src
 
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
-      fail-fast: false
       matrix:
         python-version: ["2.7", "3.5", "3.6", "3.7", "3.8", "3.9"]
-        experimental: [false]
-        include:
-          - python-version: "3.10-dev"
-            experimental: true
 
     steps:
     - uses: actions/checkout@v2
