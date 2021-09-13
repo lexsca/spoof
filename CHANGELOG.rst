@@ -1,5 +1,12 @@
+1.5.1 (2021-04-10)
+==================
+- Blackify source
+- Use GitHub Actions now for publishing releases and performing checks
+- Update supported Python versions to: 2.7, 3.5, 3.6, 3.7, 3.8, 3.9
+- Update README
+
 1.5.0 (2018-12-10)
-=================
+==================
 
 - Add `spoof.SelfSignedSSLContext` convenience class
 - Update README
