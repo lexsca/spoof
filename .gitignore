@@ -50,3 +50,6 @@ tests/credentials.yaml
 .pydevproject
 .settings
 .metadata
+
+# pyenv
+.python-version
