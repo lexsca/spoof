@@ -1,5 +1,12 @@
+1.5.2 (2021-10-07)
+==================
+
+- Add Python 3.10 to supported list and CI checks
+- Use setuptools_scm for release versioning
+
 1.5.1 (2021-04-10)
 ==================
+
 - Blackify source
 - Use GitHub Actions now for publishing releases and performing checks
 - Update supported Python versions to: 2.7, 3.5, 3.6, 3.7, 3.8, 3.9
