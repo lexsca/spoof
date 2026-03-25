@@ -1,3 +1,8 @@
+1.5.5 (2026-03-24)
+=================
+- Remove disallowed PyPI metadata
+- Make artifact publishing more verbose
+
 1.5.4 (2026-03-24)
 =================
 
