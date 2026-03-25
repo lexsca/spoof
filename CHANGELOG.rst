@@ -1,3 +1,14 @@
+1.5.4 (2026-03-24)
+=================
+
+- Update README
+- Update supported Python versions to current (3.10 to 3.14)
+- Update tests to use requests for https through https proxy
+- Update GitHub Actions workflows to current
+- Migrate build config to more current `pyproject.toml`
+- Add `MANIFEST.in` to make sdist included files more explicit
+- Add `.python-version` and `tox.ini` for local development
+
 1.5.3 (2022-11-06)
 ==================
 

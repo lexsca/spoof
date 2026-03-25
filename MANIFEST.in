@@ -1,0 +1,13 @@
+graft src
+graft tests
+
+prune .github
+prune src/docs
+prune src/spoof.egg-info
+
+include README.rst
+include CHANGELOG.rst
+include LICENSE
+include pyproject.toml
+
+global-exclude *.py[co] __pycache__ *.*~ .DS_Store .pytest_cache .mypy_cache

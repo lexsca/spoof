@@ -32,7 +32,8 @@ default response is configured. Requests can be inspected after a response is se
 Compatibility
 =============
 
-Spoof runs on Python 2.7, 3.5 to 3.11, and has no external dependencies.
+Spoof is tested on Python 3.10 to 3.14, and has no external dependencies. It may
+also work on older versions of Python, but this is not supported.
 
 Multiple Spoof HTTP servers can be run concurrently, and by default, the port
 number is the next available unused port.  With OpenSSL installed, Spoof can
