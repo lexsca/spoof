@@ -21,7 +21,6 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
-    "Topic :: Internet :: Proxy Servers ",
     "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Software Development :: Quality Assurance",
@@ -49,4 +48,5 @@ include = ["spoof*"]
 
 [tool.setuptools_scm]
 # https://setuptools-scm.readthedocs.io/en/latest/extending/#setuptools_scmversion_scheme
-# version_scheme = "only-version"
+version_scheme = "only-version"
+local_scheme = "no-local-version"
