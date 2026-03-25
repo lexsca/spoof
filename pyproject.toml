@@ -1,2 +1,52 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spoof"
+dynamic = ["version"]
+requires-python = ">=3.10"
+dependencies = []
+description = "HTTP server for testing environments"
+readme = "README.rst"
+authors = [
+    {"name" = "Lex Scarisbrick", "email" = "lex@scarisbrick.org"},
+]
+license = "MIT"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: Proxy Servers ",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Testing :: Traffic Generation",
+]
+
+[project.urls]
+Documentation = "https://spoof.readthedocs.io/en/latest/"
+Repository = "https://github.com/lexsca/spoof.git"
+Issues = "https://github.com/lexsca/spoof/issues"
+Changelog = "https://github.com/lexsca/spoof/blob/main/CHANGELOG.rst"
+
 [tool.black]
 line-length = 100
+
+[tool.setuptools]
+include-package-data = false
+py-modules = ["spoof"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["spoof*"]
+#exclude = [".github*", "tests*", "dist*", "build*", "*.egg-info*", "src/docs*"]
+
+[tool.setuptools_scm]
+# https://setuptools-scm.readthedocs.io/en/latest/extending/#setuptools_scmversion_scheme
+# version_scheme = "only-version"

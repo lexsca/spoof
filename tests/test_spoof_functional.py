@@ -1,15 +1,12 @@
-import functools
 import json
 import os
 import random
-import socket
 import ssl
 import unittest
 
 import requests
 
 import spoof
-import utils
 
 
 class BaseMixin(unittest.TestCase):
@@ -223,21 +220,9 @@ class TestProxy(BaseMixin):
         result = self.httpd.requests[-1].path
         self.assertEqual(expected, result)
 
-    @unittest.skipUnless(hasattr(ssl, "MemoryBIO"), "requires ssl.MemoryBIO")
     def test_spoof_https_site_through_https_proxy(self):
-        # This is a proof-of-concept for proxying HTTPS requests through an
-        # HTTPS server. Typically, HTTPS requests are proxied via CONNECT verb
-        # on a plain-text HTTP server. This means proxy credentials are sent
-        # in the clear, as well as the intended destination. Proxying via HTTPS
-        # allows these to be nominally protected. At this time, no major
-        # HTTP libraries support proxying HTTPS requests through HTTPS servers,
-        # so the actual request portion of the test is quite crude, reading and
-        # writing directly to sockets. The use of the `ssl.SSLContext.wrap_bio`
-        # method allows arbitrary SSL I/O, provided data is written to and read
-        # out of BIO instances. This is required as it's not possible to for an
-        # `ssl.SSLContext` socket to wrap another `ssl.SSLContext` socket.
+        # https proxies for https supported in requests v2.25.0 / urllib3 v1.26
         expected = upstream_content = b"octet-comeback-squirmy"
-        chunk_size = 4096
         httpd = spoof.HTTPServer(sslContext=spoof.SSLContext.fromCertChain(self.cert, self.key))
         httpd.defaultResponse = [200, [], ""]
         httpd.start()
@@ -246,24 +231,11 @@ class TestProxy(BaseMixin):
         )
         httpd.upstream.defaultResponse = [200, [], upstream_content]
         httpd.upstream.start()
-        client = ssl.create_default_context(cafile=self.cert).wrap_socket(
-            socket.create_connection(httpd.serverAddress), server_hostname=httpd.address
-        )
-        client.sendall(b"CONNECT google.com HTTP/1.0\r\n\r\n")
-        client.recv(chunk_size)  # response headers
-        tunnel_in = ssl.MemoryBIO()
-        tunnel_out = ssl.MemoryBIO()
-        tunnel = ssl.create_default_context(cafile=self.cert).wrap_bio(
-            tunnel_in, tunnel_out, server_hostname="google.com"
-        )
-        tunnel_cmd = functools.partial(utils.ssl_io_loop, client, tunnel_in, tunnel_out)
-        tunnel_cmd(tunnel.do_handshake)
-        tunnel_cmd(tunnel.write, b"GET / HTTP/1.0\r\n\r\n")
-        tunnel_cmd(tunnel.read, chunk_size)  # response headers
-        result = tunnel_cmd(tunnel.read, chunk_size)
-        client.close()
-        httpd.upstream.stop()
-        httpd.stop()
+        self.session.verify = self.cert
+        proxies = {"https": httpd.url}
+        result = self.session.get(httpd.upstream.url, proxies=proxies).content
+        self.assertTrue(httpd.upstream.url.startswith("https"))
+        self.assertTrue(httpd.url.startswith("https"))
         self.assertEqual(expected, result)
 
 
