@@ -27,4 +27,5 @@ jobs:
         TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
       run: |
         python -m build --wheel --sdist --outdir dist
-        twine upload dist/*
+        twine check --strict dist/*
+        twine upload --verbose dist/*

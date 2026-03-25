@@ -17,7 +17,8 @@ docs: cleandocs
 	tar cf - -C src/docs/_build/html . | tar xf - -C docs
 
 publish:
-	twine upload dist/*
+	twine check --strict dist/*
+	twine upload --verbose dist/*
 
 test:
 	tox
