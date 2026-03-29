@@ -193,7 +193,7 @@ class TestProxy(BaseMixin):
         expected = upstream_content = b"windage-gelding-spume"
         upstream_url = "https://google.com/"
         sslContext = spoof.SSLContext.fromCertChain(self.cert, self.key)
-        self.httpd.upstream = spoof.HTTPUpstreamServer(sslContext=sslContext)
+        self.httpd.upstream = spoof.HTTPServer(sslContext=sslContext)
         self.httpd.upstream.defaultResponse = [200, [], upstream_content]
         self.httpd.defaultResponse = [200, [("X-Fake-Proxy", "True")], ""]
         self.httpd.upstream.start()
@@ -226,7 +226,7 @@ class TestProxy(BaseMixin):
         httpd = spoof.HTTPServer(sslContext=spoof.SSLContext.fromCertChain(self.cert, self.key))
         httpd.defaultResponse = [200, [], ""]
         httpd.start()
-        httpd.upstream = spoof.HTTPUpstreamServer(
+        httpd.upstream = spoof.HTTPServer(
             sslContext=spoof.SSLContext.fromCertChain(self.cert, self.key)
         )
         httpd.upstream.defaultResponse = [200, [], upstream_content]

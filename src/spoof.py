@@ -145,12 +145,46 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
 
     def do_CONNECT(self):
         """Handle CONNECT request, sending it upstream if successful."""
-        request, response = self.handleRequest()
+        _, response = self.handleRequest()
         if response[0] == HTTP_OK and self.server.upstream is not None:
             if response[2]:
                 message = "CONNECT requests cannot have response content"
                 raise RuntimeError(message)
-            self.server.upstream.handleRequest(self.request, request)
+            self.proxyRequest()
+
+    def proxyRequest(self):
+        """Simulate request proxying via threaded bi-directional socket copy,
+        with a ``threading.Event`` to synchronize I/O exceptions.
+        """
+        run = threading.Event()
+        thread = threading.Thread(target=self._proxyRequest, name="proxyRequest", args=(run,))
+        self.server.upstream.proxyThreads.append(
+            collections.namedtuple("Request", "thread run")(thread, run)
+        )
+        run.set()
+        thread.start()
+        thread.join()
+
+    def _proxyRequest(self, run):
+        downstream = self.request
+        upstream = socket.create_connection(
+            self.server.upstream.serverAddress, self.server.upstream.timeout
+        )
+        writer = {downstream: upstream, upstream: downstream}
+
+        while run.is_set():
+            read, _, _ = select.select(
+                [downstream, upstream], [], [], self.server.upstream.selectTimeout
+            )
+            for sock in read:
+                chunk = sock.recv(self.server.upstream.recvSize)
+                if not chunk:
+                    run.clear()
+                    break
+                writer[sock].sendall(chunk)
+        for sock in downstream, upstream:
+            sock.shutdown(socket.SHUT_WR)
+            sock.close()
 
     def handle_one_request(self, *args, **kwargs):
         """Overrides base class to squelch TLSV1_ALERT_UNKNOWN_CA exception
@@ -196,6 +230,9 @@ class HTTPServer(object):
         self._requests = []
         self._sslContext = sslContext
         self.handlerClass = self.configureHandlerClass(self.handlerClass)
+        self.proxyThreads = []
+        self.recvSize = 4096
+        self.selectTimeout = 0.1
         if ":" in str(host):
             self.serverClass = HTTPServer6.configureServerClass(host)
         else:
@@ -310,6 +347,10 @@ class HTTPServer(object):
 
     def stop(self):
         """Stops HTTP server and closes socket."""
+        for proxy in self.proxyThreads:
+            proxy.run.clear()
+            proxy.thread.join()
+        self.proxyThreads = []
         if self.server is None:
             message = "server at {0} already stopped".format(self.url)
             raise RuntimeError(message)
@@ -444,65 +485,6 @@ class HTTPServer6(HTTPServer):
     """Provides a single-threaded, IPv6-only HTTP server."""
 
     addressFamily = socket.AF_INET6
-
-
-class HTTPUpstreamServer(HTTPServer):
-    """Handle upstream requests from `HTTPRequestHandler`, which will
-    directly invoke the `handleRequest` method to proxy the request.
-    """
-
-    def __init__(self, *args, **kwargs):
-        """Override base class method to set proxy attributes."""
-        super(HTTPUpstreamServer, self).__init__(*args, **kwargs)
-        self.proxyThreads = []
-        self.selectTimeout = 0.1
-        self.recvSize = 4096
-
-    def stop(self, *args, **kwargs):
-        """Override base class method to stop proxy threads."""
-        for proxy in self.proxyThreads:
-            proxy.run.clear()
-            proxy.thread.join()
-        self.proxyThreads = []
-        super(HTTPUpstreamServer, self).stop(*args, **kwargs)
-
-    def proxyRequest(self, client, server, run):
-        """This method expects to be run in a thread. It takes a client
-        socket and proxies the request to the server socket.
-
-        :client:  downstream `socket.socket` instance
-        :server:  upstream `socket.socket` instance
-        :run:     `threading.Event` instance control the proxy loop
-        """
-        select_args = ([client, server], [], [], self.selectTimeout)
-        writer = {client: server, server: client}
-        while run.is_set():
-            read, _, _ = select.select(*select_args)
-            for sock in read:
-                chunk = sock.recv(self.recvSize)
-                if not chunk:
-                    run.clear()
-                    break
-                writer[sock].sendall(chunk)
-        for sock in select_args[0]:
-            sock.shutdown(socket.SHUT_WR)
-            sock.close()
-
-    def handleRequest(self, client, request):
-        """Handle upstream request. Starts thread with connection to
-        upstream server and proxies request.
-
-        :client:  downstream `socket.socket` instance
-        :request: `HTTPRequestHandler.reportRequestEnv` instance
-        """
-        server = socket.create_connection(self.serverAddress, self.timeout)
-        run = threading.Event()
-        run.set()
-        name = getattr(type(self), "__name__")
-        thread = threading.Thread(target=self.proxyRequest, name=name, args=(client, server, run))
-        self.proxyThreads.append(collections.namedtuple("Request", "thread run")(thread, run))
-        thread.start()
-        thread.join()
 
 
 class SSLContext(object):

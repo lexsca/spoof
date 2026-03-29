@@ -227,23 +227,6 @@ class TestHTTPServer(unittest.TestCase):
             self.assertEqual(expected, result)
 
 
-class TestUpstreamServer(unittest.TestCase):
-    def setUp(self):
-        self.httpd = spoof.HTTPUpstreamServer()
-
-    def tearDown(self):
-        self.httpd = None
-
-    def test_Upstream_raises_RuntimeError_if_already_running(self):
-        with self.assertRaises(RuntimeError):
-            self.httpd.start()
-            self.httpd.start()
-
-    def test_Upstream_raises_RuntimeError_if_already_stopped(self):
-        with self.assertRaises(RuntimeError):
-            self.httpd.stop()
-
-
 class TestSSLContext(unittest.TestCase):
     @mock.patch.object(spoof.subprocess, "check_call")
     def test_createSelfSignedCert_raises_CalledProcessError(self, mockCall):
