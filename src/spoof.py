@@ -157,9 +157,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         with a ``threading.Event`` to synchronize I/O exceptions.
         """
         run = threading.Event()
-        thread = threading.Thread(
-            target=self._proxyRequest, name="proxyRequest", args=(run,)
-        )
+        thread = threading.Thread(target=self._proxyRequest, name="proxyRequest", args=(run,))
         self.server.upstream.proxyThreads.append(
             collections.namedtuple("Request", "thread run")(thread, run)
         )
