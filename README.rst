@@ -27,7 +27,9 @@ actual HTTP server listening on a socket. Hello, functional tests!
 Unlike a typical HTTP server, where specific method and path combinations are
 configured in advance, Spoof accepts *all* requests and sends either a queued
 response, a default response if the queue is empty, or an error response if no
-default response is configured. Requests can be inspected after a response is sent.
+default response is configured. Requests can be inspected after a response is
+sent. This can help support testing and prototyping of HTTP clients, returning
+deterministic responses independent of validating requests.
 
 Compatibility
 =============
@@ -51,16 +53,16 @@ Queue multiple responses, verify content, and request paths:
 
    with spoof.HTTPServer() as httpd:
        responses = [
-           [200, [('Content-Type', 'application/json')], '{"id": 1111}'],
-           [200, [('Content-Type', 'application/json')], '{"id": 2222}'],
+           [200, [("Content-Type", "application/json")], '{"id": 1111}'],
+           [200, [("Content-Type", "application/json")], '{"id": 2222}'],
        ]
        httpd.queueResponse(*responses)
-       httpd.defaultResponse = [404, [], 'Not found']
+       httpd.defaultResponse = [404, [], "Not found"]
 
-       assert requests.get(httpd.url + '/path').json() == {'id': 1111}
-       assert requests.get(httpd.url + '/alt/path').json() == {'id': 2222}
-       assert requests.get(httpd.url + '/oops').status_code == 404
-       assert [r.path for r in httpd.requests] == ['/path', '/alt/path', '/oops']
+       assert requests.get(httpd.url + "/path").json() == {"id": 1111}
+       assert requests.get(httpd.url + "/alt/path").json() == {"id": 2222}
+       assert requests.get(httpd.url + "/oops").status_code == 404
+       assert [r.path for r in httpd.requests] == ["/path", "/alt/path", "/oops"]
 
 Set a callback as the default response:
 
@@ -72,7 +74,7 @@ Set a callback as the default response:
    with spoof.HTTPServer() as httpd:
        httpd.defaultResponse = lambda request: [200, [], request.path]
 
-       assert requests.get(httpd.url + '/alt').content == b'/alt'
+       assert requests.get(httpd.url + "/alt").content == b"/alt"
 
 Test queued response with SSL:
 
@@ -83,13 +85,42 @@ Test queued response with SSL:
 
    with spoof.SelfSignedSSLContext() as selfSigned:
        with spoof.HTTPServer(sslContext=selfSigned.sslContext) as httpd:
-           httpd.queueResponse([200, [], 'No self-signed cert warning!'])
-           response = requests.get(httpd.url + '/path',
+           httpd.queueResponse([200, [], "No self-signed cert warning!"])
+           response = requests.get(httpd.url + "/path",
                                    verify=selfSigned.certFile)
 
-           assert httpd.requests[-1].method == 'GET'
-           assert httpd.requests[-1].path == '/path'
-           assert response.content == b'No self-signed cert warning!'
+           assert httpd.requests[-1].method == "GET"
+           assert httpd.requests[-1].path == "/path"
+           assert response.content == b"No self-signed cert warning!"
+
+
+Proxy Mode
+==========
+
+Spoof also supports proxying HTTP requests by setting the ``upstream`` attribute
+to another Spoof instance:
+
+.. code-block:: python
+
+   import requests
+   import spoof
+
+   with spoof.SelfSignedSSLContext(commonName="example.spoof") as ssl:
+       with spoof.HTTPServer(sslContext=ssl.sslContext) as proxy:
+           with spoof.HTTPServer(sslContext=ssl.sslContext) as upstream:
+               proxy.upstream = upstream
+               proxy.defaultResponse = [200, [("X-Spoof-Proxy", "True")], ""]
+               upstream.defaultResponse = [200, [], "I'm here!"]
+               response = requests.get(
+                   "https://example.spoof/ayt",
+                   proxies={"https": proxy.url},
+                   verify=ssl.certFile
+               )
+               assert proxy.requests[0].method == "CONNECT"
+               assert proxy.requests[0].path == "example.spoof:443"
+               assert upstream.requests[0].method == "GET"
+               assert upstream.requests[0].path == "/ayt"
+               assert response.content == b"I'm here!"
 
 
 SSL Warnings
@@ -109,14 +140,14 @@ property in `requests.Session` to trust the certificate:
     cert, key = spoof.SSLContext.createSelfSignedCert()
     sslContext = spoof.SSLContext.fromCertChain(cert, key)
     httpd = spoof.HTTPServer(sslContext=sslContext)
-    httpd.queueResponse([200, [], 'OK'])
+    httpd.queueResponse([200, [], "OK"])
     httpd.start()
 
     # trust self-signed certificate
     session = requests.Session()
     session.verify = cert
 
-    response = session.get(httpd.url + '/uri/path')
+    response = session.get(httpd.url + "/uri/path")
     print(response.status_code, response.content)
     httpd.stop()
 
