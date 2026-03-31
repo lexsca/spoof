@@ -1,10 +1,31 @@
+2.0.2 (2026-03-30)
+==================
+
+- Fix wrong content length being set before string encoding
+- Update tests
+- Update docs
+
+2.0.1 (2026-03-29)
+==================
+
+- Migrate from token-based twine artifact uploads to PyPI OIDC Trusted Publisher
+  with GitHub Actions: https://docs.pypi.org/trusted-publishers/
+
+2.0.0 (2026-03-28)
+==================
+
+- Rework HTTP proxy implementation to not need separate, confusingly named class
+- Update tests
+- Update docs
+
 1.5.5 (2026-03-24)
-=================
+==================
+
 - Remove disallowed PyPI metadata
 - Make artifact publishing more verbose
 
 1.5.4 (2026-03-24)
-=================
+==================
 
 - Update README
 - Update supported Python versions to current (3.10 to 3.14)

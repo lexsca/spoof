@@ -105,6 +105,12 @@ class TestRequest(BaseMixin):
         self.session.post(self.httpd.url + self.path, json=self.data)
         self.assertEqual(contentLength, self.httpd.requests[-1].contentLength)
 
+    def test_spoof_encodes_and_sets_correct_content_length_for_utf8_text(self):
+        expected = "This is Spoof 👻👋"
+        self.httpd.queueResponse([200, [], expected])
+        result = self.session.get(self.httpd.url).content.decode()
+        self.assertEqual(expected, result)
+
     def test_spoof_returns_request_queryString(self):
         url = "{0}{1}?{2}".format(self.httpd.url, self.path, self.queryString)
         self.session.get(url)

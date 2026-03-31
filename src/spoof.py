@@ -102,20 +102,19 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
 
     def sendResponse(self, response):
         """Sends response to HTTP client."""
-        self.send_response(response[0])
-        responseLength = len(response[2])
-        for header in response[1]:
+        statusCode, headers, content = response
+
+        if content and isinstance(content, str):
+            content = content.encode(RESPONSE_ENCODING)
+        contentLength = len(content) if content else 0
+
+        self.send_response(statusCode)
+        self.send_header("Content-Length", contentLength)
+        for header in headers:
             self.send_header(*header)
-        if responseLength:
-            self.send_header("Content-Length", responseLength)
-            self.end_headers()
-            try:
-                self.wfile.write(response[2])
-            except TypeError:
-                # encode string if content is not bytes
-                self.wfile.write(response[2].encode(RESPONSE_ENCODING))
-        else:
-            self.end_headers()
+        self.end_headers()
+        if content:
+            self.wfile.write(content)
 
     def getResponse(self, request):
         """Get response for this request."""
