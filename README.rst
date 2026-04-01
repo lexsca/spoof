@@ -1,35 +1,54 @@
-#####
-Spoof
-#####
+########
+Spoof 👻
+########
 
 
 .. image:: https://github.com/lexsca/spoof/actions/workflows/checks.yml/badge.svg
     :target: https://github.com/lexsca/spoof/actions/workflows/checks.yml
-
 .. image:: https://img.shields.io/pypi/v/spoof.svg
     :target: https://pypi.org/project/spoof/
-
 .. image:: https://img.shields.io/pypi/pyversions/spoof.svg
     :target: https://pypi.org/project/spoof/
-
 .. image:: https://img.shields.io/github/license/lexsca/spoof.svg
     :target: https://github.com/lexsca/spoof/blob/master/LICENSE
-
 .. image:: https://img.shields.io/badge/code%20style-black-000000.svg
     :target: https://github.com/psf/black
 
 |
 
-Spoof is an HTTP server written in Python for use in test environments where
-mocking underlying calls isn't an option, or where it's desirable to have an
-actual HTTP server listening on a socket. Hello, functional tests!
+**Spoof** is a simple HTTP server for test environments.
 
-Unlike a typical HTTP server, where specific method and path combinations are
-configured in advance, Spoof accepts *all* requests and sends either a queued
-response, a default response if the queue is empty, or an error response if no
-default response is configured. Requests can be inspected after a response is
-sent. This can help support testing and prototyping of HTTP clients, returning
-deterministic responses independent of validating requests.
+.. code-block:: python
+
+   >>> import requests
+   ... import spoof
+   ...
+   ... with spoof.HTTPServer() as httpd:
+   ...     httpd.queueResponse([200, [], "This is Spoof 👻👋"])
+   ...     requests.get(httpd.url).text
+   ...     httpd.requests
+   ...
+   'This is Spoof 👻👋'
+   [SpoofRequestEnv(method='GET', uri='/', protocol='HTTP/1.1', serverName='localhost', serverPort=62775, headers=<http.client.HTTPMessage object at 0x10d8a8f50>, path='/', queryString=None, content=None, contentType=None, contentEncoding=None, contentLength=0)]
+
+Spoof lets you easily create HTTP servers listening on *real* network
+sockets. Designed for test environments, what responses to return can be
+configured while an HTTP server is running, and requests can be inspected
+live or after a response is sent.
+
+Unlike a traditional HTTP server, where specific methods and paths are
+configured in advance, Spoof accepts and captures *all* requests, sending
+whatever responses are queued, or a default response if the queue is empty.
+
+But why?
+========
+
+Spoof is all about enabling test-driven development (and refactoring) of
+client libraries. Have you ever felt icky patching a client library to
+write tests? Ever been burned by this? Ever wanted to refactor a client
+library, but had no way to prove functionality apart from doing live
+integration testing? If you answered yes to any of the above, Spoof is
+for you.
 
 Compatibility
 =============
@@ -41,8 +60,41 @@ Multiple Spoof HTTP servers can be run concurrently, and by default, the port
 number is the next available unused port.  With OpenSSL installed, Spoof can
 also provide an SSL/TLS HTTP server.  IPv6 is fully supported.
 
-Quickstart
-==========
+`SpoofRequestEnv` instances
+===========================
+
+Spoof captures each request as a `namedtuple` with the following properties:
+
++-------------------------+----------------------------------------------+
+| Property                | Description                                  |
++=========================+==============================================+
+| content                 | `bytes` object of request content            |
++-------------------------+----------------------------------------------+
+| contentEncoding         | Value of Content-Encoding header, if present |
++-------------------------+----------------------------------------------+
+| contentLength           | Value of Content-Length header, if present   |
++-------------------------+----------------------------------------------+
+| contentType             | Value of Content-Type header, if present     |
++-------------------------+----------------------------------------------+
+| headers                 | `http.client.HTTPMessage` object of headers  |
++-------------------------+----------------------------------------------+
+| method                  | Request method (e.g. GET, POST, HEAD)        |
++-------------------------+----------------------------------------------+
+| path                    | Decoded URI path, without query string       |
++-------------------------+----------------------------------------------+
+| protocol                | Protocol version (e.g. HTTP/1.0)             |
++-------------------------+----------------------------------------------+
+| queryString             | Anything in URI after `?`                    |
++-------------------------+----------------------------------------------+
+| serverName              | Host name of HTTP server                     |
++-------------------------+----------------------------------------------+
+| serverPort              | Port number of HTTP server                   |
++-------------------------+----------------------------------------------+
+| uri                     | Raw URI path and query string, if present    |
++-------------------------+----------------------------------------------+
+
+Queued responses
+================
 
 Queue multiple responses, verify content, and request paths:
 
@@ -64,7 +116,10 @@ Queue multiple responses, verify content, and request paths:
        assert requests.get(httpd.url + "/oops").status_code == 404
        assert [r.path for r in httpd.requests] == ["/path", "/alt/path", "/oops"]
 
-Set a callback as the default response:
+Callback response
+=================
+
+Set a callback as the default response (callbacks can also be queued):
 
 .. code-block:: python
 
@@ -76,7 +131,10 @@ Set a callback as the default response:
 
        assert requests.get(httpd.url + "/alt").content == b"/alt"
 
-Test queued response with SSL:
+SSL/TLS Mode
+============
+
+Test queued response with a self-signed SSL/TLS certificate:
 
 .. code-block:: python
 
@@ -92,7 +150,6 @@ Test queued response with SSL:
            assert httpd.requests[-1].method == "GET"
            assert httpd.requests[-1].path == "/path"
            assert response.content == b"No self-signed cert warning!"
-
 
 Proxy Mode
 ==========
@@ -122,62 +179,22 @@ to another Spoof instance:
                assert upstream.requests[0].path == "/ayt"
                assert response.content == b"I'm here!"
 
+Using IPv6
+==========
 
-SSL Warnings
-============
+Setting the `host` attribute to an IPv6 address will work as expected. There is
+also an IPv6-only `spoof.HTTPServer6` class that can be used if needed.
 
-Some libraries like
-`Requests <http://docs.python-requests.org/en/master/>`__ will complain
-loudly or refuse to connect to HTTP servers with a self-signed SSL
-certificate. The preferred way to handle this is to use the `verify`
-property in `requests.Session` to trust the certificate:
+.. code-block:: python
 
-.. code:: python
-
-    import requests
-    import spoof
-
-    cert, key = spoof.SSLContext.createSelfSignedCert()
-    sslContext = spoof.SSLContext.fromCertChain(cert, key)
-    httpd = spoof.HTTPServer(sslContext=sslContext)
-    httpd.queueResponse([200, [], "OK"])
-    httpd.start()
-
-    # trust self-signed certificate
-    session = requests.Session()
-    session.verify = cert
-
-    response = session.get(httpd.url + "/uri/path")
-    print(response.status_code, response.content)
-    httpd.stop()
-
-If verifying the certificate is not an option, another way to work around
-this is to monkeypatch the requests library in the testing code. For example:
-
-.. code:: python
-
-    import requests
-
-    certVerify = requests.adapters.HTTPAdapter.cert_verify
-    def certNoVerify(self, conn, url, verify, cert):
-        return certVerify(self, conn, url, False, cert)
-    requests.adapters.HTTPAdapter.cert_verify = certNoVerify
-    requests.packages.urllib3.disable_warnings()
-
-Another common case is libraries that leverage ``ssl`` directly. One way
-to work around this is to globally set the default context to
-unverified. For example:
-
-.. code:: python
-
-    import ssl
-
-    try:
-        createUnverifiedHttpsContext = ssl._create_unverified_context
-    except AttributeError:
-        # ignore if ssl context not verified by default
-        pass
-    else:
-        ssl._create_default_https_context = createUnverifiedHttpsContext
-
+   >>> import requests
+   ... import spoof
+   ...
+   ... with spoof.HTTPServer(host="::1") as httpd:
+   ...     httpd.queueResponse([200, [], "This is Spoof on IPv6 👀"])
+   ...     requests.get(httpd.url).text
+   ...     httpd.url
+   ...
+   'This is Spoof on IPv6 👀'
+   'http://[::1]:51324'
 

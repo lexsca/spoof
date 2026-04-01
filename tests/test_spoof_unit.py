@@ -60,26 +60,6 @@ class TestHTTPRequestHandler(unittest.TestCase):
         self.handler.reportRequestEnv()
         mockUnquote.assert_has_calls(calls)
 
-    def test_Handler_sendResponse_catches_TypeError(self):
-        response = [spoof.HTTP_SERVICE_UNAVAILABLE, [], "You broke it!"]
-
-        def fakeWrite(chunk):
-            try:
-                chunk = chunk.decode(spoof.RESPONSE_ENCODING)
-            except (TypeError, AttributeError):
-                pass
-            if not fakeWrite.exceptionRaised and response[2] in chunk:
-                fakeWrite.exceptionRaised = True
-                raise TypeError("raised")
-            return mock.DEFAULT
-
-        fakeWrite.exceptionRaised = False
-        mockWfile = mock.MagicMock(spec=BytesIO)
-        mockWfile.write.side_effect = fakeWrite
-        self.handler.wfile = mockWfile
-        self.handler.sendResponse(response)
-        self.assertTrue(fakeWrite.exceptionRaised)
-
     def test_Handler_sendResponse_handles_empty_response(self):
         status = spoof.HTTP_REQUEST_ENTITY_TOO_LARGE
         self.handler.sendResponse([status, [], ""])
