@@ -21,4 +21,7 @@ publish:
 	twine upload --verbose dist/*
 
 test:
+	black .
+	flake8
+	PYTHONPATH=src pytest --cov=spoof --cov-report=term-missing tests
 	tox

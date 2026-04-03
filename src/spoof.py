@@ -1,21 +1,7 @@
-"""On-demand HTTP server for use in test environments where it's not
-practical to mock underlying calls or it's necessary to have an actual
-HTTP server listening on a socket (e.g. testing IPv6 connectivity).
-"""
-
-try:
-    import BaseHTTPServer
-except ImportError:
-    # class renamed in python 3
-    import http.server as BaseHTTPServer
 import collections
+import http.server as BaseHTTPServer
 import os
-
-try:
-    import Queue
-except ImportError:
-    # class renamed in python 3
-    import queue as Queue
+import queue as Queue
 import re
 import select
 import socket
@@ -23,12 +9,7 @@ import ssl
 import subprocess
 import tempfile
 import threading
-
-try:
-    from urllib import unquote
-except ImportError:
-    # method moved in python 3
-    from urllib.parse import unquote
+import urllib.parse
 
 HTTP_OK = 200
 HTTP_BAD_GATEWAY = 502
@@ -46,8 +27,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
     must be set before passing to the HTTP server.
     """
 
-    responseContentQueue = None
-    requestReportQueue = None
+    debug = False
     defaultResponse = None
     errorResponse = [
         HTTP_SERVICE_UNAVAILABLE,
@@ -55,23 +35,29 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         "No responses queued and no default response set\n\n",
     ]
     maxRequestLength = 1 * MEGABYTE
-    debug = False
+    requestEnvGen = collections.namedtuple(
+        "SpoofRequestEnv",
+        "content contentEncoding contentLength contentType headers "
+        "method path protocol queryString serverName serverPort uri",
+    )
+    requestReportQueue = None
+    responseContentQueue = None
 
     def reportRequestEnv(self):
         """Returns namedtuple containing request report."""
         env = {
-            "method": self.command,
-            "uri": self.path,
-            "protocol": self.request_version,
-            "serverName": self.server.serverName,
-            "serverPort": int(self.server.server_port),
-            "headers": self.headers,
-            "path": None,
-            "queryString": None,
             "content": None,
-            "contentType": self.headers.get("content-type", None),
             "contentEncoding": self.headers.get("content-encoding", None),
             "contentLength": int(self.headers.get("content-length", 0)),
+            "contentType": self.headers.get("content-type", None),
+            "headers": self.headers,
+            "method": self.command,
+            "path": None,
+            "protocol": self.request_version,
+            "queryString": None,
+            "serverName": self.server.serverName,
+            "serverPort": int(self.server.server_port),
+            "uri": self.path,
         }
         if env["contentLength"] > 0 and env["contentLength"] <= self.maxRequestLength:
             env["content"] = self.rfile.read(env["contentLength"])
@@ -80,13 +66,9 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
             path, _, env["queryString"] = env["uri"].partition(sep)
         else:
             path = self.path
-        env["path"] = unquote(path)
-        genRequest = collections.namedtuple("SpoofRequestEnv", env.keys())
-        requestEnv = genRequest(**env)
-        try:
-            self.requestReportQueue.put_nowait(requestEnv)
-        except Queue.Full:
-            pass
+        env["path"] = urllib.parse.unquote(path)
+        requestEnv = self.requestEnvGen(**env)
+        self.requestReportQueue.put_nowait(requestEnv)
         return requestEnv
 
     def nextResponse(self):
@@ -228,20 +210,20 @@ class HTTPServer(object):
         """
         self._requests = []
         self._sslContext = sslContext
+        self._upstream = None
         self.handlerClass = self.configureHandlerClass(self.handlerClass)
         self.proxyThreads = []
         self.recvSize = 4096
         self.selectTimeout = 0.1
+        self.server = None
+        self.serverAddress = (host, port)
         if ":" in str(host):
             self.serverClass = HTTPServer6.configureServerClass(host)
         else:
             self.serverClass = self.configureServerClass(host)
         self.serverClass.timeout = timeout
         self.serverClass.sslContext = sslContext
-        self.serverAddress = (host, port)
-        self.server = None
         self.thread = None
-        self._upstream = None
 
     @property
     def address(self):
@@ -404,25 +386,25 @@ class HTTPServer(object):
         """Returns list of namedtuple request instances with the
         following properties:
 
-        :method:          Request method (e.g. GET, POST, HEAD)
-        :uri:             Raw URI path and query string, if present
-        :protocol:        Protocol version client used to send request
-                           (e.g. HTTP/1.0)
-        :serverName:      Hostname of server
-        :serverPort:      TCP/IP port of server
-        :headers:         `mimetools.Message` instance with all request
-                          headers; to get specific header use:
-                          `headers.get(headerName, defaultValue)`
-        :path:            Decoded URI path, without query string
-        :queryString:     Anything in URI after URI_QUERY_SEPARATOR,
-                          `None` if missing
         :content:         string containing request content if present,
-                          `None` if missing
-        :contentType:     Content-Type header value if present,
                           `None` if missing
         :contentEncoding: Content-Encoding header value if present,
                           `None` if missing
         :contentLength:   Content-Length header integer value, 0 if missing
+        :contentType:     Content-Type header value if present,
+                          `None` if missing
+        :headers:         `mimetools.Message` instance with all request
+                          headers; to get specific header use:
+                          `headers.get(headerName, defaultValue)`
+        :method:          Request method (e.g. GET, POST, HEAD)
+        :path:            Decoded URI path, without query string
+        :protocol:        Protocol version client used to send request
+                           (e.g. HTTP/1.0)
+        :queryString:     Anything in URI after URI_QUERY_SEPARATOR,
+                          `None` if missing
+        :serverName:      Hostname of server
+        :serverPort:      TCP/IP port of server
+        :uri:             Raw URI path and query string, if present
         """
         try:
             while True:
@@ -570,11 +552,6 @@ class SSLContext(object):
 
         The DNS.0 entry is given as the commonNmae in accordance with
         RFC 2818, so any DNS subjectAltNames entries must start with 1.
-
-        Python 2.7: The `requests` library does not appear to honor
-        SAN antries of the IP type, but accepts a DNS entry instead.
-        Python 3.x is just the opposite, so if interoperability is
-        required, each IP address must have an IP and a DNS SAN entry.
         """
         fileDesc, filePath = tempfile.mkstemp()
         template = [

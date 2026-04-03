@@ -244,6 +244,14 @@ class TestProxy(BaseMixin):
         self.assertTrue(httpd.url.startswith("https"))
         self.assertEqual(expected, result)
 
+    def test_spoof_unquotes_path_and_leaves_uri_quoted(self):
+        unquoted_str = "/spoof 👻👋"
+        quoted_str = "/spoof%20%F0%9F%91%BB%F0%9F%91%8B"
+        self.session.get(self.httpd.url + quoted_str)
+        request = self.httpd.requests[-1]
+        self.assertEqual(request.path, unquoted_str)
+        self.assertEqual(request.uri, quoted_str)
+
 
 class TestSelfSignedSSLContext(BaseMixin):
     def test_context_manager_returns_ssl_context(self):
