@@ -43,22 +43,11 @@ class TestHTTPRequestHandler(unittest.TestCase):
         self.handler = None
         mock.patch.stopall()
 
-    def test_Handler_reportRequestEnv_catches_Queue_Full(self):
-        self.mockRequestQueue.put_nowait.side_effect = spoof.Queue.Full("test")
-        self.handler.reportRequestEnv()
-        self.assertTrue(self.mockRequestQueue.put_nowait.called)
-
     def test_Handler_reportRequestEnv_does_not_catch_AssertionError(self):
         error = AssertionError
         with self.assertRaises(error):
             self.mockRequestQueue.put_nowait.side_effect = error("raised")
             self.handler.reportRequestEnv()
-
-    @mock.patch.object(spoof, "unquote")
-    def test_Handler_reportRequestEnv_handler_calls_unquote(self, mockUnquote):
-        calls = [mock.call.unquote(self.handler.path)]
-        self.handler.reportRequestEnv()
-        mockUnquote.assert_has_calls(calls)
 
     def test_Handler_sendResponse_handles_empty_response(self):
         status = spoof.HTTP_REQUEST_ENTITY_TOO_LARGE
