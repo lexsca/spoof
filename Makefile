@@ -9,7 +9,7 @@ build:
 	tar tvfz dist/*.tar.gz
 
 clean:
-	rm -fr dist build .pytest_cache .coverage
+	rm -fr dist build .pytest_cache .coverage */*.egg-info
 	find . -type d -name __pycache__ -exec /bin/rm -fr {} +
 
 dev-setup:
