@@ -26,6 +26,8 @@ jobs:
       run: |
         black --check --diff .
         flake8 .
+        python -m build --wheel --sdist --outdir dist
+        twine check --strict dist/*
 
   Test:
     runs-on: ubuntu-latest
