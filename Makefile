@@ -1,27 +1,20 @@
-.PHONY: build cleandocs clean docs publish test
+.PHONY: all build clean dev-setup test
+
+all: clean dev-setup test build
 
 build:
 	python -m build --wheel --sdist --outdir dist
+	unzip -t dist/*.whl
+	tar tvfz dist/*.tar.gz
 
-cleandocs:
-	rm -fr src/docs/_build docs/.??* docs/*
-
-clean: cleandocs
-	rm -fr src/spoof.egg-info spoof.egg-info dist build .eggs \
-		.tox .pytest_cache coverage.xml .coverage
+clean:
+	rm -fr dist build .pytest_cache .coverage
 	find . -type d -name __pycache__ -exec /bin/rm -fr {} +
-	find . -depth -type f -name '*.pyc' -exec /bin/rm -fr {} +
 
-docs: cleandocs
-	$(MAKE) -C src/docs html
-	tar cf - -C src/docs/_build/html . | tar xf - -C docs
-
-publish:
-	twine check --strict dist/*
-	twine upload --verbose dist/*
+dev-setup:
+	pip install --upgrade --requirement requirements-dev.txt
 
 test:
 	black .
 	flake8
 	PYTHONPATH=src pytest --cov=spoof --cov-report=term-missing tests
-	tox

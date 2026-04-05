@@ -17,12 +17,12 @@ import sys
 
 import sphinx_rtd_theme
 
-sys.path.insert(0, os.path.abspath(".."))
+sys.path.insert(0, os.path.abspath("../src"))
 
 # -- Project information -----------------------------------------------------
 
 project = "Spoof"
-copyright = "2018, Lex Scarisbrick"
+copyright = "2026, Lex Scarisbrick"
 author = "Lex Scarisbrick"
 
 # The short X.Y version
@@ -42,7 +42,6 @@ release = ""
 # ones.
 extensions = [
     "sphinx.ext.autodoc",
-    "sphinx.ext.githubpages",
 ]
 
 # Add any paths that contain templates here, relative to this directory.

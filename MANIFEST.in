@@ -2,8 +2,6 @@ graft src
 graft tests
 
 prune .github
-prune src/docs
-prune src/spoof.egg-info
 
 include README.rst
 include CHANGELOG.rst
