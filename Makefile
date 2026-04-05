@@ -4,6 +4,7 @@ all: clean dev-setup test build
 
 build:
 	python -m build --wheel --sdist --outdir dist
+	twine check --strict dist/*
 	unzip -t dist/*.whl
 	tar tvfz dist/*.tar.gz
 

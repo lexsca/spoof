@@ -7,3 +7,4 @@ pytest-cov==7.1.0
 requests==2.33.1
 setuptools==82.0.1
 setuptools-scm==10.0.5
+twine==6.2.0
