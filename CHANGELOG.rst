@@ -1,3 +1,22 @@
+2.0.5 (2026-04-05)
+==================
+
+- Fixup RST spacing
+- Add checks to catch RST formatting errors
+
+2.0.4 (2026-04-05)
+==================
+
+- Reorganize docs
+- Reorganize requirements
+
+2.0.3 (2026-04-03)
+==================
+
+- Remove Python 2.x support
+- Cleanup code
+- Update tests
+
 2.0.2 (2026-03-30)
 ==================
 
