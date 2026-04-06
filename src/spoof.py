@@ -91,7 +91,8 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         contentLength = len(content) if content else 0
 
         self.send_response(statusCode)
-        self.send_header("Content-Length", contentLength)
+        if content is not None:
+            self.send_header("Content-Length", contentLength)
         for header in headers:
             self.send_header(*header)
         self.end_headers()
