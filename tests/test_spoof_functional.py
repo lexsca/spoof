@@ -133,14 +133,12 @@ class TestRequest(BaseMixin):
         self.assertEqual(self.httpd.maxRequestLength, maxRequestLength)
 
     def test_spoof_returns_defaultResponse(self):
-        self.httpd.reset()
         defaultResponse = [200, [], "OK"]
         self.httpd.defaultResponse = defaultResponse
         request = self.session.get(self.httpd.url + "/default")
         self.assertEqual(request.status_code, defaultResponse[0])
 
     def test_spoof_returns_errorResponse(self):
-        self.httpd.reset()
         errorResponse = self.httpd.handlerClass.errorResponse
         request = self.session.get(self.httpd.url + "/error")
         self.assertEqual(request.status_code, errorResponse[0])
@@ -152,7 +150,6 @@ class TestRequest(BaseMixin):
             self.session.get(httpd.url + "/random")
 
     def test_spoof_allows_callable_defaultResponse(self):
-        self.httpd.reset()
         status_code = random.randint(205, 299)
 
         def callback(this):
@@ -164,7 +161,6 @@ class TestRequest(BaseMixin):
         self.assertEqual(request.content.decode(), "/infight-canaille-scorch")
 
     def test_spoof_allows_callable_queued_response(self):
-        self.httpd.reset()
         status_code = random.randint(205, 299)
 
         def callback(this):
@@ -174,6 +170,19 @@ class TestRequest(BaseMixin):
         request = self.session.get(self.httpd.url + "/plasma-nausea-shifty")
         self.assertEqual(request.status_code, status_code)
         self.assertEqual(request.content.decode(), "/plasma-nausea-shifty")
+
+    def test_spoof_unquotes_path_and_leaves_uri_quoted(self):
+        unquoted_str = "/spoof 👻👋"
+        quoted_str = "/spoof%20%F0%9F%91%BB%F0%9F%91%8B"
+        self.session.get(self.httpd.url + quoted_str)
+        request = self.httpd.requests[-1]
+        self.assertEqual(request.path, unquoted_str)
+        self.assertEqual(request.uri, quoted_str)
+
+    def test_spoof_sends_no_content_length_header(self):
+        self.httpd.defaultResponse = [200, [], None]
+        response = self.session.get(self.httpd.url)
+        self.assertIsNone(response.headers.get("Content-Length"))
 
 
 class TestProxy(BaseMixin):
@@ -201,7 +210,7 @@ class TestProxy(BaseMixin):
         sslContext = spoof.SSLContext.fromCertChain(self.cert, self.key)
         self.httpd.upstream = spoof.HTTPServer(sslContext=sslContext)
         self.httpd.upstream.defaultResponse = [200, [], upstream_content]
-        self.httpd.defaultResponse = [200, [("X-Fake-Proxy", "True")], ""]
+        self.httpd.defaultResponse = [200, [], None]
         self.httpd.upstream.start()
         self.session.verify = self.cert
         proxies = {"https": self.httpd.url}
@@ -230,7 +239,7 @@ class TestProxy(BaseMixin):
         # https proxies for https supported in requests v2.25.0 / urllib3 v1.26
         expected = upstream_content = b"octet-comeback-squirmy"
         httpd = spoof.HTTPServer(sslContext=spoof.SSLContext.fromCertChain(self.cert, self.key))
-        httpd.defaultResponse = [200, [], ""]
+        httpd.defaultResponse = [200, [], None]
         httpd.start()
         httpd.upstream = spoof.HTTPServer(
             sslContext=spoof.SSLContext.fromCertChain(self.cert, self.key)
@@ -243,14 +252,6 @@ class TestProxy(BaseMixin):
         self.assertTrue(httpd.upstream.url.startswith("https"))
         self.assertTrue(httpd.url.startswith("https"))
         self.assertEqual(expected, result)
-
-    def test_spoof_unquotes_path_and_leaves_uri_quoted(self):
-        unquoted_str = "/spoof 👻👋"
-        quoted_str = "/spoof%20%F0%9F%91%BB%F0%9F%91%8B"
-        self.session.get(self.httpd.url + quoted_str)
-        request = self.httpd.requests[-1]
-        self.assertEqual(request.path, unquoted_str)
-        self.assertEqual(request.uri, quoted_str)
 
 
 class TestSelfSignedSSLContext(BaseMixin):

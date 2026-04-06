@@ -1,3 +1,10 @@
+2.0.6 (2026-04-06)
+==================
+
+- Don't set Content-Length header if content is None
+- Update tests
+- Update docs
+
 2.0.5 (2026-04-05)
 ==================
 

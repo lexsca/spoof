@@ -29,8 +29,8 @@ Spoof 👻
    'This is Spoof 👻👋'
    [SpoofRequestEnv(method='GET', uri='/', protocol='HTTP/1.1', serverName='localhost', serverPort=62775, headers=<http.client.HTTPMessage object at 0x10d8a8f50>, path='/', queryString=None, content=None, contentType=None, contentEncoding=None, contentLength=0)]
 
-Test interface for HTTP
-=======================
+A test interface for HTTP
+=========================
 Spoof lets you easily create HTTP servers listening on real network
 sockets. Designed for test environments, what responses to return can be
 configured while an HTTP server is running, and requests can be inspected
@@ -43,7 +43,7 @@ whatever responses are queued, or a default response if the queue is empty.
 Why would I want this?
 ======================
 Spoof is all about enabling test-driven development (and refactoring) of
-HTTP client code. Have you ever felt icky patching a client library to
+HTTP client code. Have you ever felt gross patching a client library to
 write tests? Ever been burned by this? Ever wanted to refactor a client
 library, but had no way to prove functionality apart from doing live
 integration testing? If you answered yes to any of the above, Spoof is
@@ -143,17 +143,38 @@ Test queued response with a self-signed SSL/TLS certificate:
    with spoof.SelfSignedSSLContext() as selfSigned:
        with spoof.HTTPServer(sslContext=selfSigned.sslContext) as httpd:
            httpd.queueResponse([200, [], "No self-signed cert warning!"])
-           response = requests.get(httpd.url + "/path",
-                                   verify=selfSigned.certFile)
+           response = requests.get(httpd.url, verify=selfSigned.certFile)
 
-           assert httpd.requests[-1].method == "GET"
-           assert httpd.requests[-1].path == "/path"
+           assert response.content == b"No self-signed cert warning!"
+
+If setting the ``verify`` option in ``requests`` isn't workable, the
+``REQUESTS_CA_BUNDLE`` or ``CURL_CA_BUNDLE`` environment variables can be
+set to the path of the self-signed certificate to silence SSL/TLS errors:
+
+.. code-block:: python
+
+   import os
+   import requests
+   import spoof
+
+   with spoof.SelfSignedSSLContext() as selfSigned:
+       with spoof.HTTPServer(sslContext=selfSigned.sslContext) as httpd:
+           os.environ["REQUESTS_CA_BUNDLE"] = selfSigned.certFile
+           httpd.queueResponse([200, [], "No self-signed cert warning!"])
+           response = requests.get(httpd.url)
+
            assert response.content == b"No self-signed cert warning!"
 
 Proxy Mode
 ==========
-Spoof also supports proxying HTTP requests by setting the ``upstream`` attribute
-to another Spoof instance:
+Spoof supports proxying HTTP requests by setting the ``upstream``
+attribute to another Spoof instance. By design, Spoof won't connect to
+any external services. Proxy requests will only connect to other Spoof
+instances.
+
+Note that, as per Section 4.3.6 of RFC 7231, a proxy MUST not return
+return any content in response to a ``CONNECT`` request. Be sure to
+set any responses for proxy requests to an empty payload.
 
 .. code-block:: python
 
@@ -164,8 +185,9 @@ to another Spoof instance:
        with spoof.HTTPServer(sslContext=ssl.sslContext) as proxy:
            with spoof.HTTPServer(sslContext=ssl.sslContext) as upstream:
                proxy.upstream = upstream
-               proxy.defaultResponse = [200, [("X-Spoof-Proxy", "True")], ""]
+               proxy.defaultResponse = [200, [], None]
                upstream.defaultResponse = [200, [], "I'm here!"]
+
                response = requests.get(
                    "https://example.spoof/ayt",
                    proxies={"https": proxy.url},
@@ -177,10 +199,11 @@ to another Spoof instance:
                assert upstream.requests[0].path == "/ayt"
                assert response.content == b"I'm here!"
 
-Using IPv6
-==========
+HTTP on IPv6
+============
 Setting the ``host`` attribute to an IPv6 address will work as expected. There
-is also an IPv6-only ``spoof.HTTPServer6`` class that can be used if needed.
+is also an IPv6-only ``spoof.HTTPServer6`` class that can be used if needed to
+only listen on IPv6 sockets.
 
 .. code-block:: python
 
@@ -194,4 +217,44 @@ is also an IPv6-only ``spoof.HTTPServer6`` class that can be used if needed.
    ...
    'This is Spoof on IPv6 👀'
    'http://[::1]:51324'
+
+.. code-block:: python
+
+   >>> import requests
+   ... import spoof
+   ...
+   ... with spoof.HTTPServer6(host="localhost") as httpd:
+   ...     httpd.queueResponse([200, [], "This is also Spoof on IPv6 👀"])
+   ...     requests.get(httpd.url).text
+   ...     httpd.url
+   ...
+   'This is also Spoof on IPv6 👀'
+   'http://[::1]:54296'
+
+Using a debugger
+================
+Setting a callback with a ``breakpoint()`` can allow for live HTTP request
+debugging, including setting custom responses and inspecting requests. Note
+that callbacks can also be queued.
+
+.. code-block:: python
+
+   >>> import requests
+   ... import spoof
+   ...
+   ... def debugCallback(request):
+   ...     response = [200, [], ""]
+   ...     breakpoint()
+   ...     return response
+   ...
+   ... with spoof.HTTPServer() as httpd:
+   ...     httpd.defaultResponse = debugCallback
+   ...     requests.get(httpd.url).text
+   ...
+   > <python-input-0>(6)debugCallback()
+   (Pdb) request
+   SpoofRequestEnv(content=None, contentEncoding=None, contentLength=0, contentType=None, headers=<http.client.HTTPMessage object at 0x10e16bd90>, method='GET', path='/', protocol='HTTP/1.1', queryString=None, serverName='localhost', serverPort=51612, uri='/')
+   (Pdb) response[2] = "content set from pdb"
+   (Pdb) c
+   'content set from pdb'
 
