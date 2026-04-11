@@ -1,7 +1,8 @@
 import collections
+import functools
 import http.server as BaseHTTPServer
+import json
 import os
-import queue as Queue
 import re
 import select
 import socket
@@ -35,10 +36,11 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         "No responses queued and no default response set\n\n",
     ]
     maxRequestLength = 1 * MEGABYTE
+    proxyRequestGen = collections.namedtuple("SpoofProxyRequest", "thread run")
     requestEnvGen = collections.namedtuple(
         "SpoofRequestEnv",
-        "content contentEncoding contentLength contentType headers "
-        "method path protocol queryString serverName serverPort uri",
+        "content contentEncoding contentLength contentType headers json"
+        " method path protocol queryString serverName serverPort uri",
     )
     requestReportQueue = None
     responseContentQueue = None
@@ -67,15 +69,16 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         else:
             path = self.path
         env["path"] = urllib.parse.unquote(path)
+        env["json"] = functools.partial(json.loads, env["content"])
         requestEnv = self.requestEnvGen(**env)
-        self.requestReportQueue.put_nowait(requestEnv)
+        self.requestReportQueue.append(requestEnv)
         return requestEnv
 
     def nextResponse(self):
         """Returns next HTTP response to send."""
         try:
-            response = self.responseContentQueue.get_nowait()
-        except Queue.Empty:
+            response = self.responseContentQueue.popleft()
+        except IndexError:
             if self.defaultResponse is not None:
                 response = self.defaultResponse
             else:
@@ -91,11 +94,13 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         contentLength = len(content) if content else 0
 
         self.send_response(statusCode)
+
         if content is not None:
             self.send_header("Content-Length", contentLength)
         for header in headers:
             self.send_header(*header)
         self.end_headers()
+
         if content:
             self.wfile.write(content)
 
@@ -129,20 +134,16 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         """Handle CONNECT request, sending it upstream if successful."""
         _, response = self.handleRequest()
         if response[0] == HTTP_OK and self.server.upstream is not None:
-            if response[2]:
-                message = "CONNECT requests cannot have response content"
-                raise RuntimeError(message)
             self.proxyRequest()
 
     def proxyRequest(self):
-        """Simulate request proxying via threaded bi-directional socket copy,
-        with a ``threading.Event`` to synchronize I/O exceptions.
+        """Simulate request proxying via threaded bi-directional socket copy
+        to upstream ``spoof.HTTPServer`` instance with a ``threading.Event``
+        to synchronize I/O exceptions.
         """
         run = threading.Event()
         thread = threading.Thread(target=self._proxyRequest, name="proxyRequest", args=(run,))
-        self.server.upstream.proxyThreads.append(
-            collections.namedtuple("Request", "thread run")(thread, run)
-        )
+        self.server.upstream.proxyThreads.append(self.proxyRequestGen(thread, run))
         run.set()
         thread.start()
         thread.join()
@@ -155,10 +156,10 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         writer = {downstream: upstream, upstream: downstream}
 
         while run.is_set():
-            read, _, _ = select.select(
+            ready_to_recv, _, _ = select.select(
                 [downstream, upstream], [], [], self.server.upstream.selectTimeout
             )
-            for sock in read:
+            for sock in ready_to_recv:
                 chunk = sock.recv(self.server.upstream.recvSize)
                 if not chunk:
                     run.clear()
@@ -168,23 +169,9 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
             sock.shutdown(socket.SHUT_WR)
             sock.close()
 
-    def handle_one_request(self, *args, **kwargs):
-        """Overrides base class to squelch TLSV1_ALERT_UNKNOWN_CA exception
-        stemming from the use of self-signed certificates.  The error will
-        be logged if self.debug is `True`.
-        """
-        try:
-            super(HTTPRequestHandler, self).handle_one_request(*args, **kwargs)
-        except ssl.SSLError as error:
-            if "TLSV1_ALERT_UNKNOWN_CA" in str(error):
-                self.log_error("SSL negotiation failed: %r", error)
-            else:
-                raise
-
     def log_message(self, *args, **kwargs):
-        """Overrides base class to squelch logging unless
-        self.debug is true.
-        """
+        """Overrides base class to squelch request logging unless self.debug is true."""
+
         if self.debug:
             super(HTTPRequestHandler, self).log_message(*args, **kwargs)
 
@@ -209,7 +196,8 @@ class HTTPServer(object):
         :timeout: integer timeout in seconds to wait for server operations
         :sslContext: `ssl.SSLContext` compatible instance
         """
-        self._requests = []
+        self._requests = collections.deque()
+        self._responses = collections.deque()
         self._sslContext = sslContext
         self._upstream = None
         self.handlerClass = self.configureHandlerClass(self.handlerClass)
@@ -304,10 +292,8 @@ class HTTPServer(object):
         used to effectively create a discrete handler class and attributes.
         """
         handlerClass = type(sourceClass.__name__, (sourceClass, object), dict())
-        self.responseContentQueue = Queue.Queue()
-        self.requestReportQueue = Queue.Queue()
-        handlerClass.responseContentQueue = self.responseContentQueue
-        handlerClass.requestReportQueue = self.requestReportQueue
+        handlerClass.responseContentQueue = self._responses
+        handlerClass.requestReportQueue = self._requests
         return handlerClass
 
     def start(self):
@@ -328,20 +314,19 @@ class HTTPServer(object):
         self.thread.start()
 
     def stop(self):
-        """Stops HTTP server and closes socket."""
+        """Stops HTTP server thread(s) and closes socket(s)."""
         for proxy in self.proxyThreads:
             proxy.run.clear()
             proxy.thread.join()
-        self.proxyThreads = []
-        if self.server is None:
-            message = "server at {0} already stopped".format(self.url)
-            raise RuntimeError(message)
-        self.server.shutdown()
-        self.server.server_close()
+        if self.server is not None:
+            self.server.shutdown()
+            self.server.server_close()
         if self.thread is not None:
             self.thread.join()
-            self.thread = None
+
+        self.proxyThreads = []
         self.server = None
+        self.thread = None
 
     def __enter__(self):
         """Starts HTTP server and returns `Spoof` instance when invoked as a
@@ -372,19 +357,13 @@ class HTTPServer(object):
 
     def reset(self):
         """Reset request and response attributes."""
-        queues = ["requestReportQueue", "responseContentQueue"]
-        for queue in [getattr(self, name) for name in queues]:
-            try:
-                while True:
-                    queue.get_nowait()
-            except Queue.Empty:
-                pass
-        del self._requests[:]
+        self._requests.clear()
+        self._responses.clear()
         self.defaultResponse = None
 
     @property
     def requests(self):
-        """Returns list of namedtuple request instances with the
+        """Returns ``deque`` of namedtuple instances with the
         following properties:
 
         :content:         string containing request content if present,
@@ -397,6 +376,7 @@ class HTTPServer(object):
         :headers:         `mimetools.Message` instance with all request
                           headers; to get specific header use:
                           `headers.get(headerName, defaultValue)`
+        :json():          Convenience to call json.loads on content
         :method:          Request method (e.g. GET, POST, HEAD)
         :path:            Decoded URI path, without query string
         :protocol:        Protocol version client used to send request
@@ -407,13 +387,25 @@ class HTTPServer(object):
         :serverPort:      TCP/IP port of server
         :uri:             Raw URI path and query string, if present
         """
-        try:
-            while True:
-                requestReport = self.requestReportQueue.get_nowait()
-                self._requests.append(requestReport)
-        except Queue.Empty:
-            pass
         return self._requests
+
+    @property
+    def responses(self):
+        """Returns ``deque`` of responses to send. If no responses are queued,
+        then ``self.defaultResponse`` is sent. If no default response is set,
+        then ``self.errorResponse`` is sent. Format for responses:
+
+        [httpStatus, [(headerName1, value1), (headerName2, value2)], content]
+
+        Example adding one response and multiple responses:
+
+        self.responses.append([200, [("Content-Type", "text/plain)], "OK"])
+        self.responses.extend([
+            [200, [("Content-Type", "text/plain)], "One"],
+            [200, [("Content-Type", "text/plain)], "Two"],
+        ])
+        """
+        return self._responses
 
     @property
     def maxRequestLength(self):
@@ -435,7 +427,7 @@ class HTTPServer(object):
         """Sets the default response used by the request handler class to
         respond to requests when no responses are queued. If the default
         response is not set, and no responses are queued, errorResponse
-        is sent.  Response format:
+        is sent. Format for response:
 
         [httpStatus, [(headerName1, value1), (headerName2, value2)], content]
 
@@ -453,14 +445,10 @@ class HTTPServer(object):
 
     def queueResponse(self, *responses):
         """Queues one or more response to be returned by HTTP server.
-        If no responses are queued, the handler class defaultResponse
-        will be sent. If defaultResponse is not set, and no responses
-        are queued, the errorResponse is sent.
 
-        See `defaultResponse` for response format.
+        NOTE: This method is deprecated. Please use ``responses`` instead.
         """
-        for response in responses:
-            self.responseContentQueue.put_nowait(response)
+        self._responses.extend(responses)
 
 
 class HTTPServer6(HTTPServer):
@@ -495,16 +483,25 @@ class SSLContext(object):
 
     @classmethod
     def createSelfSignedCert(
-        cls, commonName="localhost", bits=2048, days=365, openssl="openssl", subjectAltNames=None
+        cls,
+        commonName="localhost",
+        bits=2048,
+        days=365,
+        openssl="openssl",
+        subjectAltNames=None,
+        keyAlgorithm=None,
     ):
         """Creates and returns file paths to self-signed certificate and key
         via OpenSSL command line tool.
 
         :commonName: string of hostname for X509 certificate
-        :bits: RSA key length in bits
+        :bits: RSA public key length in bits
         :days: length in days certificate is valid
         :openssl: name/path string of openssl command
+        :keyAlgorithm: key algorithm to use (e.g. mldsa65); ignores ``bits`` arg
         """
+        if keyAlgorithm is None:
+            keyAlgorithm = "rsa:" + str(bits)
         devNull = open(os.devnull, "w")
         key = tempfile.mkstemp()
         cert = tempfile.mkstemp()
@@ -517,7 +514,7 @@ class SSLContext(object):
             "-config",
             config,
             "-newkey",
-            "rsa:" + str(bits),
+            keyAlgorithm,
             "-keyout",
             key[1],
             "-out",

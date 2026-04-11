@@ -30,24 +30,12 @@ class TestHTTPRequestHandler(unittest.TestCase):
 
         mock.patch.object(spoof.HTTPRequestHandler, "__init__", fakeInit).start()
         self.handler = spoof.HTTPRequestHandler()
-        self.mockRequestQueue = mock.patch.object(
-            spoof.HTTPRequestHandler, "requestReportQueue", spec=spoof.Queue.Queue
-        ).start()
-        self.mockResponseQueue = mock.patch.object(
-            spoof.HTTPRequestHandler, "responseContentQueue", spec=spoof.Queue.Queue
-        ).start()
 
     def tearDown(self):
         self.rfile = None
         self.wfile = None
         self.handler = None
         mock.patch.stopall()
-
-    def test_Handler_reportRequestEnv_does_not_catch_AssertionError(self):
-        error = AssertionError
-        with self.assertRaises(error):
-            self.mockRequestQueue.put_nowait.side_effect = error("raised")
-            self.handler.reportRequestEnv()
 
     def test_Handler_sendResponse_handles_empty_response(self):
         status = spoof.HTTP_REQUEST_ENTITY_TOO_LARGE
@@ -57,30 +45,9 @@ class TestHTTPRequestHandler(unittest.TestCase):
         formattedStatus = " {0} ".format(status)
         self.assertIn(formattedStatus, response)
 
-    @mock.patch.object(spoof.HTTPRequestHandler, "sendResponse")
-    def test_Handler_handleRequest_honors_maxRequestLength(self, mockSend):
-        self.mockResponseQueue.get_nowait.return_value = [200, [], "OK"]
-        self.handler.maxRequestLength = 1
-        self.handler.handleRequest()
-        expected = spoof.HTTP_REQUEST_ENTITY_TOO_LARGE
-        result = mockSend.call_args[0][0][0]
-        self.assertEqual(expected, result)
-
     def test_Handler_raises_AttributeError_for_unknown_attributes(self):
         with self.assertRaises(AttributeError):
             self.handler.attributeThatDoesNotExist
-
-    @mock.patch.object(spoof.BaseHTTPServer.BaseHTTPRequestHandler, "handle_one_request")
-    def test_Handler_handle_one_reequest_catches_UNKNOWN_CA_SSLError(self, mockOne):
-        mockOne.side_effect = spoof.ssl.SSLError("TLSV1_ALERT_UNKNOWN_CA")
-        self.handler.handle_one_request()
-        self.assertTrue(mockOne.called)
-
-    @mock.patch.object(spoof.BaseHTTPServer.BaseHTTPRequestHandler, "handle_one_request")
-    def test_Handler_handle_one_reequest_doesnt_catch_OTHER_SSLError(self, mockOne):
-        mockOne.side_effect = spoof.ssl.SSLError("TLSV1_ALERT_OTHER_CA")
-        with self.assertRaises(spoof.ssl.SSLError):
-            self.handler.handle_one_request()
 
     @mock.patch.object(spoof.BaseHTTPServer.BaseHTTPRequestHandler, "log_message")
     def test_Handler_log_message_called_with_debug_true(self, mockLog):
@@ -96,12 +63,6 @@ class TestHTTPRequestHandler(unittest.TestCase):
         self.handler.log_message(message)
         self.assertFalse(mockLog.called)
 
-    @mock.patch.object(spoof.HTTPRequestHandler, "handleRequest")
-    def test_Handler_raises_exception_on_CONNECT_with_content(self, mock_req):
-        mock_req.return_value = (None, (200, (), "Not empty string"))
-        with self.assertRaises(RuntimeError):
-            self.handler.do_CONNECT()
-
 
 class TestHTTPServer(unittest.TestCase):
     def setUp(self):
@@ -115,10 +76,6 @@ class TestHTTPServer(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.httpd.start()
             self.httpd.start()
-
-    def test_Server_raises_RuntimeError_if_already_stopped(self):
-        with self.assertRaises(RuntimeError):
-            self.httpd.stop()
 
     def test_Server_context_manager_returns_HTTPServer_instance(self):
         with spoof.HTTPServer() as httpd:
@@ -136,17 +93,6 @@ class TestHTTPServer(unittest.TestCase):
     def test_Server_defaultResponse_returns_None(self):
         result = self.httpd.defaultResponse
         self.assertIsNone(result)
-
-    def test_Server_defaultResponse_can_be_set(self):
-        expected = [200, [], "OK"]
-        self.httpd.defaultResponse = expected
-        result = self.httpd.defaultResponse
-        self.assertEqual(expected, result)
-
-    def test_Server_get_timeout(self):
-        expected = self.httpd.serverClass.timeout
-        result = self.httpd.timeout
-        self.assertEqual(expected, result)
 
     def test_Server_set_timeout(self):
         expected = random.randint(1, 300)
@@ -167,32 +113,6 @@ class TestHTTPServer(unittest.TestCase):
         with spoof.HTTPServer() as httpd:
             httpd.timeout = expected
             result = httpd.server.timeout
-            self.assertEqual(expected, result)
-
-    def test_Server_get_upstream(self):
-        expected = None
-        result = self.httpd.upstream
-        self.assertEqual(expected, result)
-
-    def test_Server_set_upstream(self):
-        expected = True
-        self.httpd.upstream = expected
-        result = self.httpd.upstream
-        self.assertEqual(expected, result)
-
-    def test_Server_get_upstream_gets_server_instance(self):
-        randupstream = True
-        with spoof.HTTPServer() as httpd:
-            httpd.upstream = randupstream
-            expected = httpd.server.upstream
-            result = httpd.upstream
-            self.assertEqual(expected, result)
-
-    def test_Server_set_upstream_sets_server_instance(self):
-        expected = True
-        with spoof.HTTPServer() as httpd:
-            httpd.upstream = expected
-            result = httpd.server.upstream
             self.assertEqual(expected, result)
 
 

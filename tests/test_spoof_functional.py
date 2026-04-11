@@ -50,9 +50,11 @@ class TestRequest(BaseMixin):
 
     def tearDown(self):
         self.httpd.reset()
-        self.httpd6.reset()
         self.httpd.debug = False
+        self.httpd.maxRequestLength = spoof.MEGABYTE
+        self.httpd6.reset()
         self.httpd6.debug = False
+        self.httpd6.maxRequestLength = spoof.MEGABYTE
 
     def test_spoof_sends_response_status(self):
         self.assertEqual(self.response[0], self.result.status_code)
@@ -85,7 +87,7 @@ class TestRequest(BaseMixin):
     def test_spoof_returns_request_content(self):
         expected = json.loads(json.dumps(self.data))
         self.session.post(self.httpd.url + self.path, json=expected)
-        result = json.loads(self.httpd.requests[-1].content.decode("utf-8"))
+        result = self.httpd.requests[-1].json()
         self.assertEqual(expected, result)
 
     def test_spoof_returns_request_contentEncoding(self):
@@ -183,6 +185,33 @@ class TestRequest(BaseMixin):
         self.httpd.defaultResponse = [200, [], None]
         response = self.session.get(self.httpd.url)
         self.assertIsNone(response.headers.get("Content-Length"))
+
+    def test_maxRequestLength_is_honored(self):
+        self.httpd.maxRequestLength = 1
+        response = self.session.post(self.httpd.url, data=b"OK")
+        expected = spoof.HTTP_REQUEST_ENTITY_TOO_LARGE
+        result = response.status_code
+        self.assertEqual(expected, result)
+
+    def test_queue_single_response(self):
+        expected = "One fish"
+        self.httpd.responses.append([200, [], expected])
+        response = self.session.get(self.httpd.url)
+        result = response.text
+        self.assertEqual(expected, result)
+
+    def test_queueing_multiple_responses(self):
+        expected = ["One fish", "Two fish", "Red fish", "Blue fish"]
+        self.httpd.responses.extend([[200, [], text] for text in expected])
+        results = [self.session.get(self.httpd.url).text for _ in expected]
+        self.assertEqual(expected, results)
+
+    def test_queue_callback(self):
+        expected_path = "/correct/horse/battery/staple"
+        self.httpd.responses.append(lambda request: [200, [], request.path])
+        response = self.session.get(self.httpd.url + expected_path)
+        self.assertEqual(expected_path, response.text)
+        self.assertEqual(expected_path, self.httpd.requests[-1].path)
 
 
 class TestProxy(BaseMixin):

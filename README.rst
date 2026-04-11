@@ -22,7 +22,7 @@ Spoof 👻
    ... import spoof
    ...
    ... with spoof.HTTPServer() as httpd:
-   ...     httpd.queueResponse([200, [], "This is Spoof 👻👋"])
+   ...     httpd.responses.append([200, [], "This is Spoof 👻👋"])
    ...     requests.get(httpd.url).text
    ...     httpd.requests
    ...
@@ -43,28 +43,35 @@ whatever responses are queued, or a default response if the queue is empty.
 Why would I want this?
 ======================
 Spoof is all about enabling test-driven development (and refactoring) of
-HTTP client code. Have you ever felt gross patching a client library to
+HTTP client code. Have you ever felt icky patching a client library to
 write tests? Ever been burned by this? Ever wanted to refactor a client
 library, but had no way to prove functionality apart from doing live
-integration testing? If you answered yes to any of the above, Spoof is
-for you.
+integration testing? If you answered yes to any of the above, Spoof might
+be for you.
 
-Compatibility
-=============
+Spoof HTTP servers run in a single background thread, so request and
+response order should be predictable. Tests using Spoof should be able
+to use the same fixtures, in the same order, and get the same results.
+
+Installation and Compatibility
+==============================
+
+Spoof is available on PyPI:
+
+.. code-block:: console
+
+   $ python -m pip install spoof
+
 Spoof is tested on Python 3.10 to 3.14, leverages the ``http.server`` module
-included in the standard library, and has no external dependencies. It may
-work on older versions of Python, but this is not supported.
+included in the Python standard library, and has no external dependencies.
+It may work on older versions of Python, but this is not supported.
 
 Multiple Spoof HTTP servers can be run concurrently, and by default, the port
-number is the next available unused port.  With OpenSSL installed, Spoof can
-also provide an SSL/TLS HTTP server.  IPv6 is fully supported.
+number is the next available unused port. With OpenSSL installed, Spoof can
+also provide an SSL/TLS HTTP server. HTTP proxying and IPv6 are also supported.
 
-Spoof HTTP servers run in a single background thread, so request and response
-order should be predictable. Tests should be able to use the same fixtures,
-in the same order, and get the same results.
-
-``SpoofRequestEnv`` instances
-=============================
+Request instances
+=================
 Spoof captures each request as a ``namedtuple`` with the following properties:
 
 +-------------------------+----------------------------------------------+
@@ -79,6 +86,8 @@ Spoof captures each request as a ``namedtuple`` with the following properties:
 | contentType             | Value of Content-Type header, if present     |
 +-------------------------+----------------------------------------------+
 | headers                 | ``http.client.HTTPMessage`` object of headers|
++-------------------------+----------------------------------------------+
+| json()                  | Convenience to call ``json.loads`` on content|
 +-------------------------+----------------------------------------------+
 | method                  | Request method (e.g. GET, POST, HEAD)        |
 +-------------------------+----------------------------------------------+
@@ -95,6 +104,39 @@ Spoof captures each request as a ``namedtuple`` with the following properties:
 | uri                     | Raw URI path and query string, if present    |
 +-------------------------+----------------------------------------------+
 
+Example with request properties:
+
+.. code-block:: python
+
+   >>> import requests
+   ... import spoof
+   ...
+   ... with spoof.HTTPServer() as httpd:
+   ...     httpd.defaultResponse = [200, [], None]
+   ...     [requests.get(httpd.url + path) for path in ["/a", "/b", "/c"]]
+   ...     [f"{r.method} {r.path} {r.protocol}" for r in httpd.requests]
+   ...
+   [<Response [200]>, <Response [200]>, <Response [200]>]
+   ['GET /a HTTP/1.1', 'GET /b HTTP/1.1', 'GET /c HTTP/1.1']
+
+Response format
+===============
+
+Spoof expects responses to have the following format:
+
+.. code-block:: python
+
+   [httpStatus, [(headerName1, value1), (headerName2, value2)], content]
+
+   # no content (Content-Length header is *not* sent if content is None)
+   [200, [], None]
+
+   # utf-8 content
+   [200, [], "This is Spoof 👻👋"]
+
+   # bytes content
+   [200, [("Content-Type", "application/json")], b'{"success": true }']
+
 Queued responses
 ================
 Queue multiple responses, verify content, and request paths:
@@ -105,11 +147,10 @@ Queue multiple responses, verify content, and request paths:
    import spoof
 
    with spoof.HTTPServer() as httpd:
-       responses = [
-           [200, [("Content-Type", "application/json")], '{"id": 1111}'],
-           [200, [("Content-Type", "application/json")], '{"id": 2222}'],
-       ]
-       httpd.queueResponse(*responses)
+       httpd.responses.extend([
+           [200, [("Content-Type", "application/json")], b'{"id": 1111}'],
+           [200, [("Content-Type", "application/json")], b'{"id": 2222}'],
+       ])
        httpd.defaultResponse = [404, [], "Not found"]
 
        assert requests.get(httpd.url + "/path").json() == {"id": 1111}
@@ -142,10 +183,10 @@ Test queued response with a self-signed SSL/TLS certificate:
 
    with spoof.SelfSignedSSLContext() as selfSigned:
        with spoof.HTTPServer(sslContext=selfSigned.sslContext) as httpd:
-           httpd.queueResponse([200, [], "No self-signed cert warning!"])
+           httpd.responses.append([200, [], "No self-signed cert warning!"])
            response = requests.get(httpd.url, verify=selfSigned.certFile)
 
-           assert response.content == b"No self-signed cert warning!"
+           assert response.text == "No self-signed cert warning!"
 
 If setting the ``verify`` option in ``requests`` isn't workable, the
 ``REQUESTS_CA_BUNDLE`` or ``CURL_CA_BUNDLE`` environment variables can be
@@ -160,10 +201,25 @@ set to the path of the self-signed certificate to silence SSL/TLS errors:
    with spoof.SelfSignedSSLContext() as selfSigned:
        with spoof.HTTPServer(sslContext=selfSigned.sslContext) as httpd:
            os.environ["REQUESTS_CA_BUNDLE"] = selfSigned.certFile
-           httpd.queueResponse([200, [], "No self-signed cert warning!"])
+           httpd.responses.append([200, [], "No self-signed cert warning!"])
            response = requests.get(httpd.url)
 
-           assert response.content == b"No self-signed cert warning!"
+           assert response.text == "No self-signed cert warning!"
+
+If OpenSSL 3.5.0 or later is installed, Post-Quantum Cryptography (PQC)
+key algorithms can be used:
+
+.. code-block:: python
+
+   import requests
+   import spoof
+
+   with spoof.SelfSignedSSLContext(keyAlgorithm="mldsa65") as selfSigned:
+       with spoof.HTTPServer(sslContext=selfSigned.sslContext) as httpd:
+           httpd.responses.append([200, [], "TLS with PQC Key Algorithm"])
+           response = requests.get(httpd.url, verify=selfSigned.certFile)
+
+           assert response.text == "TLS with PQC Key Algorithm"
 
 Proxy Mode
 ==========
@@ -211,7 +267,7 @@ only listen on IPv6 sockets.
    ... import spoof
    ...
    ... with spoof.HTTPServer(host="::1") as httpd:
-   ...     httpd.queueResponse([200, [], "This is Spoof on IPv6 👀"])
+   ...     httpd.responses.append([200, [], "This is Spoof on IPv6 👀"])
    ...     requests.get(httpd.url).text
    ...     httpd.url
    ...
@@ -224,7 +280,7 @@ only listen on IPv6 sockets.
    ... import spoof
    ...
    ... with spoof.HTTPServer6(host="localhost") as httpd:
-   ...     httpd.queueResponse([200, [], "This is also Spoof on IPv6 👀"])
+   ...     httpd.responses.append([200, [], "This is also Spoof on IPv6 👀"])
    ...     requests.get(httpd.url).text
    ...     httpd.url
    ...
