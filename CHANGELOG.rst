@@ -1,3 +1,17 @@
+2.1.0 (2026-04-11)
+==================
+
+- Replace queues with deques for a simpler interface, allowing use of
+  ``.append()`` and ``.extend()`` methods for requests and responses
+- Add ``.json()`` convenience function to request objects
+- Add ``.responses`` property to compliment ``.requests`` property
+- Add ``keyAlgorithm`` arg to ``createSelfSignedCert`` to allow for
+  non-RSA keys, including post quantum algorithms like mldsa65
+- Remove unnecessary content check for CONNECT method
+- Deprecate ``.queueResponse`` method
+- Update tests
+- Update docs
+
 2.0.6 (2026-04-06)
 ==================
 
