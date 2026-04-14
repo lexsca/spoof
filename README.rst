@@ -108,29 +108,31 @@ Example with request properties:
    ...
    ... with spoof.HTTPServer() as httpd:
    ...     httpd.defaultResponse = [200, [], None]
+   ...
    ...     [requests.get(httpd.url + path) for path in ["/a", "/b", "/c"]]
    ...     [f"{r.method} {r.path} {r.protocol}" for r in httpd.requests]
    ...
    [<Response [200]>, <Response [200]>, <Response [200]>]
    ['GET /a HTTP/1.1', 'GET /b HTTP/1.1', 'GET /c HTTP/1.1']
 
-Response order
-==============
+Response precedence
+===================
 
-Spoof determines what response to send based on the following precedence,
-highest to lowest:
+Spoof determines what response to send to incoming requests based on
+the following precedence, highest to lowest:
 
-#. Oldest response queued in ``.responses`` (FIFO)
+#. Oldest response queued in ``.responses`` using first-in, first-out (FIFO) order
 #. Response stored in ``.defaultResponse`` if no responses are queued
 #. Response stored in ``.errorResponse`` if ``.defaultResponse`` is ``None``
 
-By default, no responses are queued and no default response is set. This
-means that absent any user configuration, the error response is sent.
+By default, an HTTP error response will be sent to all requests, because
+newly created Spoof instances have no responses queued, and no default
+response set. This requires non-error responses to be explicitly specified.
 
-Response format
+Response syntax
 ===============
 
-Spoof expects responses to have the following format:
+Spoof expects responses to have the following syntax:
 
 .. code-block:: python
 
@@ -153,7 +155,7 @@ Queued responses
 ================
 
 Spoof HTTP servers run in a single background thread, so request and
-response order should be predictable and serial. Tests using Spoof should be able
+response order should be predictable. Tests using Spoof should be able
 to use the same fixtures, in the same order, and get the same results. Example
 queueing multiple responses, verifying content, and request paths:
 
@@ -239,9 +241,9 @@ key algorithms can be used:
 
 Proxy Mode
 ==========
-Spoof supports proxying by port forwarding ``CONNECT`` requests to a
+Spoof supports proxying by port-forwarding ``CONNECT`` requests to a
 separate upstream Spoof instance when the ``proxy=True`` argument is
-given. Designed to be self-contained, Spoof won't try to connect to
+given. Unlike a real proxy server, Spoof won't try to connect to
 external services. Example usage:
 
 .. code-block:: python
