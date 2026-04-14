@@ -189,18 +189,20 @@ class HTTPServer(object):
     handlerClass = HTTPRequestHandler
     addressFamily = socket.AF_INET
 
-    def __init__(self, host="localhost", port=0, timeout=5, sslContext=None):
+    def __init__(self, host="localhost", port=0, timeout=5, sslContext=None, proxy=False):
         """
-        :host: IP/IPv6 address string or FQDN string
-        :port: TCP port integer (0 selects an unused port)
-        :timeout: integer timeout in seconds to wait for server operations
+        :host:       IP/IPv6 address string or FQDN string
+        :port:       TCP port integer (0 selects an unused port)
+        :timeout:    integer timeout in seconds to wait for server operations
         :sslContext: `ssl.SSLContext` compatible instance
+        :proxy:      Configure and manage ``.upstream`` instance?
         """
         self._requests = collections.deque()
         self._responses = collections.deque()
         self._sslContext = sslContext
         self._upstream = None
         self.handlerClass = self.configureHandlerClass(self.handlerClass)
+        self.proxyMode = proxy
         self.proxyThreads = []
         self.recvSize = 4096
         self.selectTimeout = 0.1
@@ -213,6 +215,10 @@ class HTTPServer(object):
         self.serverClass.timeout = timeout
         self.serverClass.sslContext = sslContext
         self.thread = None
+
+        if self.proxyMode:
+            self.upstream = type(self)(host="localhost", port=0, sslContext=sslContext, proxy=False)
+            self.defaultResponse = [200, [], None]
 
     @property
     def address(self):
@@ -255,7 +261,7 @@ class HTTPServer(object):
     def upstream(self):
         """Returns upstream HTTP server, or `None` if not set."""
         upstream = self._upstream
-        if self.server is not None and self.server.upstream is not None:
+        if self.server is not None and getattr(self.server, "upstream", None) is not None:
             upstream = self.server.upstream
         return upstream
 
@@ -301,10 +307,12 @@ class HTTPServer(object):
         if self.server is not None:
             message = "server at {0} already started".format(self.url)
             raise RuntimeError(message)
-        else:
-            self.server = self.serverClass(self.serverAddress, self.handlerClass)
-            self.serverAddress = self.server.server_address
-            self.server.upstream = self._upstream
+        if self.proxyMode:
+            self.upstream.start()
+
+        self.server = self.serverClass(self.serverAddress, self.handlerClass)
+        self.serverAddress = self.server.server_address
+        self.server.upstream = self.upstream
         if self.server.sslContext is not None:
             self.server.socket = self.server.sslContext.wrap_socket(
                 self.server.socket, server_side=True
@@ -315,6 +323,9 @@ class HTTPServer(object):
 
     def stop(self):
         """Stops HTTP server thread(s) and closes socket(s)."""
+        if self.proxyMode:
+            self.upstream.stop()
+
         for proxy in self.proxyThreads:
             proxy.run.clear()
             proxy.thread.join()

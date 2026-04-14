@@ -1,3 +1,10 @@
+2.2.0 (2026-04-13)
+==================
+
+- Add ``proxy`` argument to ``HTTPServer`` to simplify proxy setup
+- Update tests
+- Update docs
+
 2.1.0 (2026-04-11)
 ==================
 

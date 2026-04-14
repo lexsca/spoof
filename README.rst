@@ -24,16 +24,14 @@ Spoof 👻
    ... with spoof.HTTPServer() as httpd:
    ...     httpd.responses.append([200, [], "This is Spoof 👻👋"])
    ...     requests.get(httpd.url).text
-   ...     httpd.requests
    ...
    'This is Spoof 👻👋'
-   [SpoofRequestEnv(method='GET', uri='/', protocol='HTTP/1.1', serverName='localhost', serverPort=62775, headers=<http.client.HTTPMessage object at 0x10d8a8f50>, path='/', queryString=None, content=None, contentType=None, contentEncoding=None, contentLength=0)]
 
 A test interface for HTTP
 =========================
 Spoof lets you easily create HTTP servers listening on real network
 sockets. Designed for test environments, what responses to return can be
-configured while an HTTP server is running, and requests can be inspected
+configured while an HTTP server is running. Requests can be inspected
 live or after a response is sent.
 
 Unlike a traditional HTTP server, where specific methods and paths are
@@ -46,12 +44,8 @@ Spoof is all about enabling test-driven development (and refactoring) of
 HTTP client code. Have you ever felt icky patching a client library to
 write tests? Ever been burned by this? Ever wanted to refactor a client
 library, but had no way to prove functionality apart from doing live
-integration testing? If you answered yes to any of the above, Spoof might
-be for you.
-
-Spoof HTTP servers run in a single background thread, so request and
-response order should be predictable. Tests using Spoof should be able
-to use the same fixtures, in the same order, and get the same results.
+integration testing? Ever wanted mock functionality for HTTP? If you
+answered yes to any of the above, Spoof might be for you.
 
 Installation and Compatibility
 ==============================
@@ -72,7 +66,8 @@ also provide an SSL/TLS HTTP server. HTTP proxying and IPv6 are also supported.
 
 Request instances
 =================
-Spoof captures each request as a ``namedtuple`` with the following properties:
+Spoof captures each request as a ``SpoofRequestEnv`` instance with the following
+properties:
 
 +-------------------------+----------------------------------------------+
 | Property                | Description                                  |
@@ -119,6 +114,19 @@ Example with request properties:
    [<Response [200]>, <Response [200]>, <Response [200]>]
    ['GET /a HTTP/1.1', 'GET /b HTTP/1.1', 'GET /c HTTP/1.1']
 
+Response order
+==============
+
+Spoof determines what response to send based on the following precedence,
+highest to lowest:
+
+#. Oldest response queued in ``.responses`` (FIFO)
+#. Response stored in ``.defaultResponse`` if no responses are queued
+#. Response stored in ``.errorResponse`` if ``.defaultResponse`` is ``None``
+
+By default, no responses are queued and no default response is set. This
+means that absent any user configuration, the error response is sent.
+
 Response format
 ===============
 
@@ -137,9 +145,17 @@ Spoof expects responses to have the following format:
    # bytes content
    [200, [("Content-Type", "application/json")], b'{"success": true }']
 
+   # responses can also be a callback
+   def callback(request):
+       return [200, [], request.path]
+
 Queued responses
 ================
-Queue multiple responses, verify content, and request paths:
+
+Spoof HTTP servers run in a single background thread, so request and
+response order should be predictable and serial. Tests using Spoof should be able
+to use the same fixtures, in the same order, and get the same results. Example
+queueing multiple responses, verifying content, and request paths:
 
 .. code-block:: python
 
@@ -170,7 +186,7 @@ Set a callback as the default response (callbacks can also be queued):
    with spoof.HTTPServer() as httpd:
        httpd.defaultResponse = lambda request: [200, [], request.path]
 
-       assert requests.get(httpd.url + "/alt").content == b"/alt"
+       assert requests.get(httpd.url + "/alt").text == "/alt"
 
 SSL/TLS Mode
 ============
@@ -184,8 +200,8 @@ Test queued response with a self-signed SSL/TLS certificate:
    with spoof.SelfSignedSSLContext() as selfSigned:
        with spoof.HTTPServer(sslContext=selfSigned.sslContext) as httpd:
            httpd.responses.append([200, [], "No self-signed cert warning!"])
-           response = requests.get(httpd.url, verify=selfSigned.certFile)
 
+           response = requests.get(httpd.url, verify=selfSigned.certFile)
            assert response.text == "No self-signed cert warning!"
 
 If setting the ``verify`` option in ``requests`` isn't workable, the
@@ -200,10 +216,10 @@ set to the path of the self-signed certificate to silence SSL/TLS errors:
 
    with spoof.SelfSignedSSLContext() as selfSigned:
        with spoof.HTTPServer(sslContext=selfSigned.sslContext) as httpd:
-           os.environ["REQUESTS_CA_BUNDLE"] = selfSigned.certFile
            httpd.responses.append([200, [], "No self-signed cert warning!"])
-           response = requests.get(httpd.url)
 
+           os.environ["REQUESTS_CA_BUNDLE"] = selfSigned.certFile
+           response = requests.get(httpd.url)
            assert response.text == "No self-signed cert warning!"
 
 If OpenSSL 3.5.0 or later is installed, Post-Quantum Cryptography (PQC)
@@ -217,43 +233,36 @@ key algorithms can be used:
    with spoof.SelfSignedSSLContext(keyAlgorithm="mldsa65") as selfSigned:
        with spoof.HTTPServer(sslContext=selfSigned.sslContext) as httpd:
            httpd.responses.append([200, [], "TLS with PQC Key Algorithm"])
-           response = requests.get(httpd.url, verify=selfSigned.certFile)
 
+           response = requests.get(httpd.url, verify=selfSigned.certFile)
            assert response.text == "TLS with PQC Key Algorithm"
 
 Proxy Mode
 ==========
-Spoof supports proxying HTTP requests by setting the ``upstream``
-attribute to another Spoof instance. By design, Spoof won't connect to
-any external services. Proxy requests will only connect to other Spoof
-instances.
-
-Note that, as per Section 4.3.6 of RFC 7231, a proxy MUST not return
-return any content in response to a ``CONNECT`` request. Be sure to
-set any responses for proxy requests to an empty payload.
+Spoof supports proxying by port forwarding ``CONNECT`` requests to a
+separate upstream Spoof instance when the ``proxy=True`` argument is
+given. Designed to be self-contained, Spoof won't try to connect to
+external services. Example usage:
 
 .. code-block:: python
 
    import requests
    import spoof
 
-   with spoof.SelfSignedSSLContext(commonName="example.spoof") as ssl:
-       with spoof.HTTPServer(sslContext=ssl.sslContext) as proxy:
-           with spoof.HTTPServer(sslContext=ssl.sslContext) as upstream:
-               proxy.upstream = upstream
-               proxy.defaultResponse = [200, [], None]
-               upstream.defaultResponse = [200, [], "I'm here!"]
+   with spoof.SelfSignedSSLContext(commonName="example.spoof") as selfSigned:
+       with spoof.HTTPServer(sslContext=selfSigned.sslContext, proxy=True) as proxy:
+           proxy.upstream.defaultResponse = [200, [], "I'm here!"]
 
-               response = requests.get(
-                   "https://example.spoof/ayt",
-                   proxies={"https": proxy.url},
-                   verify=ssl.certFile
-               )
-               assert proxy.requests[0].method == "CONNECT"
-               assert proxy.requests[0].path == "example.spoof:443"
-               assert upstream.requests[0].method == "GET"
-               assert upstream.requests[0].path == "/ayt"
-               assert response.content == b"I'm here!"
+           response = requests.get(
+               "https://example.spoof/ayt",
+               proxies={"https": proxy.url},
+               verify=selfSigned.certFile
+           )
+           assert proxy.requests[0].method == "CONNECT"
+           assert proxy.requests[0].path == "example.spoof:443"
+           assert proxy.upstream.requests[0].method == "GET"
+           assert proxy.upstream.requests[0].path == "/ayt"
+           assert response.text == "I'm here!"
 
 HTTP on IPv6
 ============
