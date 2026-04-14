@@ -227,6 +227,8 @@ class TestProxy(BaseMixin):
         self.httpd = spoof.HTTPServer()
         self.httpd.start()
         self.session = requests.Session()
+        self.session.verify = self.cert
+        self.sslContext = spoof.SSLContext.fromCertChain(self.cert, self.key)
 
     def tearDown(self):
         self.httpd.stop()
@@ -236,12 +238,10 @@ class TestProxy(BaseMixin):
     def test_spoof_connect_https_proxy(self):
         expected = upstream_content = b"windage-gelding-spume"
         upstream_url = "https://google.com/"
-        sslContext = spoof.SSLContext.fromCertChain(self.cert, self.key)
-        self.httpd.upstream = spoof.HTTPServer(sslContext=sslContext)
+        self.httpd.upstream = spoof.HTTPServer(sslContext=self.sslContext)
         self.httpd.upstream.defaultResponse = [200, [], upstream_content]
         self.httpd.defaultResponse = [200, [], None]
         self.httpd.upstream.start()
-        self.session.verify = self.cert
         proxies = {"https": self.httpd.url}
         result = self.session.get(upstream_url, proxies=proxies).content
         self.httpd.upstream.stop()
@@ -267,20 +267,23 @@ class TestProxy(BaseMixin):
     def test_spoof_https_site_through_https_proxy(self):
         # https proxies for https supported in requests v2.25.0 / urllib3 v1.26
         expected = upstream_content = b"octet-comeback-squirmy"
-        httpd = spoof.HTTPServer(sslContext=spoof.SSLContext.fromCertChain(self.cert, self.key))
+        httpd = spoof.HTTPServer(sslContext=self.sslContext)
         httpd.defaultResponse = [200, [], None]
         httpd.start()
-        httpd.upstream = spoof.HTTPServer(
-            sslContext=spoof.SSLContext.fromCertChain(self.cert, self.key)
-        )
+        httpd.upstream = spoof.HTTPServer(sslContext=self.sslContext)
         httpd.upstream.defaultResponse = [200, [], upstream_content]
         httpd.upstream.start()
-        self.session.verify = self.cert
         proxies = {"https": httpd.url}
         result = self.session.get(httpd.upstream.url, proxies=proxies).content
         self.assertTrue(httpd.upstream.url.startswith("https"))
         self.assertTrue(httpd.url.startswith("https"))
         self.assertEqual(expected, result)
+
+    def test_spoof_simple_proxy_mode(self):
+        with spoof.HTTPServer(sslContext=self.sslContext, proxy=True) as proxy:
+            proxy.upstream.responses.append([200, [], "simple-spoof-proxy-setup"])
+            result = self.session.get("https://google.com", proxies={"https": proxy.url}).text
+        self.assertEqual(result, "simple-spoof-proxy-setup")
 
 
 class TestSelfSignedSSLContext(BaseMixin):
