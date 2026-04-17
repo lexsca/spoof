@@ -34,8 +34,8 @@ sockets. Designed for test environments, what responses to return can be
 configured while an HTTP server is running. Requests can be inspected
 live or after a response is sent.
 
-Unlike a traditional HTTP server, where specific methods and paths are
-configured in advance, Spoof accepts and captures *all* requests, sending
+Unlike a conventional HTTP server, where specific methods and paths are
+configured in advance, Spoof accepts and records *all* requests, sending
 whatever responses are queued, or a default response if the queue is empty.
 
 Why would I want this?
@@ -43,9 +43,9 @@ Why would I want this?
 Spoof is all about enabling test-driven development (and refactoring) of
 HTTP client code. Have you ever felt icky patching a client library to
 write tests? Ever been burned by this? Ever wanted to refactor a client
-library, but had no way to prove functionality apart from doing live
-integration testing? Ever wanted mock functionality for HTTP? If you
-answered yes to any of the above, Spoof might be for you.
+library, but had no way to check correctness apart from doing live
+integration testing? Ever wanted mock for HTTP? If you answered yes to
+any of the above, Spoof might be for you.
 
 Installation and Compatibility
 ==============================
@@ -64,10 +64,115 @@ Multiple Spoof HTTP servers can be run concurrently, and by default, the port
 number is the next available unused port. With OpenSSL installed, Spoof can
 also provide an SSL/TLS HTTP server. HTTP proxying and IPv6 are also supported.
 
-Request instances
+Response precedence
+===================
+
+Spoof determines what response to send to incoming requests based on
+the following precedence, highest to lowest:
+
+#. Oldest response queued in ``.responses`` using first-in, first-out (FIFO) order
+#. Response stored in ``.defaultResponse`` if no responses are queued
+#. Response stored in ``.errorResponse`` if ``.defaultResponse`` is ``None``
+
+By default, Spoof will respond with an **HTTP 503 Service Unavailable** error,
+because newly created Spoof instances have no responses queued and no default
+response set. This requires non-error HTTP responses to be explicitly specified.
+
+Response syntax
+===============
+
+Spoof expects responses to have the following syntax:
+
+.. code-block:: python
+
+   [httpStatus, [(headerName1, value1), (headerName2, value2)], content]
+
+   # no content (Content-Length header is *not* sent if content is None)
+   [200, [], None]
+
+   # utf-8 content
+   [200, [], "This is Spoof 👻👋"]
+
+   # bytes content
+   [200, [("Content-Type", "application/json")], b'{"success": true }']
+
+   # responses can also be a callback
+   def callback(request):
+       return [200, [], request.path]
+
+Response queue
+==============
+
+Spoof will always try to send a response from ``.responses`` first, before falling
+back to ``.defaultResponse`` or ``.errorResponse`` if the queue is empty. Backed by a
+`deque <https://docs.python.org/3/library/collections.html#collections.deque>`__
+instance, the ``.responses`` queue supports adding items via ``.responses.append()``
+and ``.responses.extend()``, similar to a regular list.
+
+Spoof HTTP servers run in a single background thread, so response order should
+be predictably serial. Tests using Spoof should be able to use the same fixtures,
+in the same order, and get the same results. Example queueing multiple responses,
+verifying content, and request paths:
+
+.. code-block:: python
+
+   import requests
+   import spoof
+
+   with spoof.HTTPServer() as httpd:
+       httpd.responses.extend([
+           [200, [("Content-Type", "application/json")], b'{"id": 1111}'],
+           [200, [("Content-Type", "application/json")], b'{"id": 2222}'],
+       ])
+       httpd.defaultResponse = [404, [], "Not found"]
+
+       assert requests.get(httpd.url + "/path").json() == {"id": 1111}
+       assert requests.get(httpd.url + "/alt/path").json() == {"id": 2222}
+       assert requests.get(httpd.url + "/oops").status_code == 404
+       assert [r.path for r in httpd.requests] == ["/path", "/alt/path", "/oops"]
+
+Response callback
 =================
-Spoof captures each request as a ``SpoofRequestEnv`` instance with the following
-properties:
+Set a callback as the default response (callbacks can also be queued):
+
+.. code-block:: python
+
+   import requests
+   import spoof
+
+   with spoof.HTTPServer() as httpd:
+       httpd.defaultResponse = lambda request: [200, [], request.path]
+
+       assert requests.get(httpd.url + "/alt").text == "/alt"
+
+Request history
+===============
+
+Spoof records each request and appends it to the ``.requests`` property,
+which is backed by a
+`deque <https://docs.python.org/3/library/collections.html#collections.deque>`__
+instance, the same as the ``.responses`` property.  Once added to the ``.requests``
+property, a request instance only exists for historical purposes. Example
+using request history:
+
+.. code-block:: python
+
+   >>> import requests
+   ... import spoof
+   ...
+   ... with spoof.HTTPServer() as httpd:
+   ...     httpd.defaultResponse = [200, [], None]
+   ...
+   ...     [requests.get(httpd.url + path) for path in ["/a", "/b", "/c"]]
+   ...     [f"{r.method} {r.path} {r.protocol}" for r in httpd.requests]
+   ...
+   [<Response [200]>, <Response [200]>, <Response [200]>]
+   ['GET /a HTTP/1.1', 'GET /b HTTP/1.1', 'GET /c HTTP/1.1']
+
+Request properties
+==================
+
+``SpoofRequestEnv`` instances have the following properties:
 
 +-------------------------+----------------------------------------------+
 | Property                | Description                                  |
@@ -98,97 +203,6 @@ properties:
 +-------------------------+----------------------------------------------+
 | uri                     | Raw URI path and query string, if present    |
 +-------------------------+----------------------------------------------+
-
-Example with request properties:
-
-.. code-block:: python
-
-   >>> import requests
-   ... import spoof
-   ...
-   ... with spoof.HTTPServer() as httpd:
-   ...     httpd.defaultResponse = [200, [], None]
-   ...
-   ...     [requests.get(httpd.url + path) for path in ["/a", "/b", "/c"]]
-   ...     [f"{r.method} {r.path} {r.protocol}" for r in httpd.requests]
-   ...
-   [<Response [200]>, <Response [200]>, <Response [200]>]
-   ['GET /a HTTP/1.1', 'GET /b HTTP/1.1', 'GET /c HTTP/1.1']
-
-Response precedence
-===================
-
-Spoof determines what response to send to incoming requests based on
-the following precedence, highest to lowest:
-
-#. Oldest response queued in ``.responses`` using first-in, first-out (FIFO) order
-#. Response stored in ``.defaultResponse`` if no responses are queued
-#. Response stored in ``.errorResponse`` if ``.defaultResponse`` is ``None``
-
-By default, an HTTP error response will be sent to all requests, because
-newly created Spoof instances have no responses queued, and no default
-response set. This requires non-error responses to be explicitly specified.
-
-Response syntax
-===============
-
-Spoof expects responses to have the following syntax:
-
-.. code-block:: python
-
-   [httpStatus, [(headerName1, value1), (headerName2, value2)], content]
-
-   # no content (Content-Length header is *not* sent if content is None)
-   [200, [], None]
-
-   # utf-8 content
-   [200, [], "This is Spoof 👻👋"]
-
-   # bytes content
-   [200, [("Content-Type", "application/json")], b'{"success": true }']
-
-   # responses can also be a callback
-   def callback(request):
-       return [200, [], request.path]
-
-Queued responses
-================
-
-Spoof HTTP servers run in a single background thread, so request and
-response order should be predictable. Tests using Spoof should be able
-to use the same fixtures, in the same order, and get the same results. Example
-queueing multiple responses, verifying content, and request paths:
-
-.. code-block:: python
-
-   import requests
-   import spoof
-
-   with spoof.HTTPServer() as httpd:
-       httpd.responses.extend([
-           [200, [("Content-Type", "application/json")], b'{"id": 1111}'],
-           [200, [("Content-Type", "application/json")], b'{"id": 2222}'],
-       ])
-       httpd.defaultResponse = [404, [], "Not found"]
-
-       assert requests.get(httpd.url + "/path").json() == {"id": 1111}
-       assert requests.get(httpd.url + "/alt/path").json() == {"id": 2222}
-       assert requests.get(httpd.url + "/oops").status_code == 404
-       assert [r.path for r in httpd.requests] == ["/path", "/alt/path", "/oops"]
-
-Callback response
-=================
-Set a callback as the default response (callbacks can also be queued):
-
-.. code-block:: python
-
-   import requests
-   import spoof
-
-   with spoof.HTTPServer() as httpd:
-       httpd.defaultResponse = lambda request: [200, [], request.path]
-
-       assert requests.get(httpd.url + "/alt").text == "/alt"
 
 SSL/TLS Mode
 ============
@@ -266,8 +280,31 @@ external services. Example usage:
            assert proxy.upstream.requests[0].path == "/ayt"
            assert response.text == "I'm here!"
 
-HTTP on IPv6
-============
+If setting the ``proxies`` option in ``requests`` isn't workable, the
+``https_proxy`` environment variable can be set to the URL of the proxy:
+
+.. code-block:: python
+
+   import os
+   import requests
+   import spoof
+
+   with spoof.SelfSignedSSLContext(commonName="example.spoof") as selfSigned:
+       with spoof.HTTPServer(sslContext=selfSigned.sslContext, proxy=True) as proxy:
+           proxy.upstream.defaultResponse = [200, [], "I'm here!"]
+
+           os.environ["https_proxy"] = proxy.url
+           os.environ["REQUESTS_CA_BUNDLE"] = selfSigned.certFile
+
+           response = requests.get("https://example.spoof/ayt")
+           assert proxy.requests[0].method == "CONNECT"
+           assert proxy.requests[0].path == "example.spoof:443"
+           assert proxy.upstream.requests[0].method == "GET"
+           assert proxy.upstream.requests[0].path == "/ayt"
+           assert response.text == "I'm here!"
+
+IPv6 Mode
+=========
 Setting the ``host`` attribute to an IPv6 address will work as expected. There
 is also an IPv6-only ``spoof.HTTPServer6`` class that can be used if needed to
 only listen on IPv6 sockets.
@@ -298,8 +335,8 @@ only listen on IPv6 sockets.
    'This is also Spoof on IPv6 👀'
    'http://[::1]:54296'
 
-Using a debugger
-================
+Debug mode
+==========
 Setting a callback with a ``breakpoint()`` can allow for live HTTP request
 debugging, including setting custom responses and inspecting requests. Note
 that callbacks can also be queued.

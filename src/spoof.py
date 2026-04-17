@@ -303,7 +303,7 @@ class HTTPServer(object):
         return handlerClass
 
     def start(self):
-        """Starts HTTP server thread."""
+        """Starts HTTP server thread(s)."""
         if self.server is not None:
             message = "server at {0} already started".format(self.url)
             raise RuntimeError(message)
@@ -505,10 +505,10 @@ class SSLContext(object):
         """Creates and returns file paths to self-signed certificate and key
         via OpenSSL command line tool.
 
-        :commonName: string of hostname for X509 certificate
-        :bits: RSA public key length in bits
-        :days: length in days certificate is valid
-        :openssl: name/path string of openssl command
+        :commonName:   string of hostname for X509 certificate
+        :bits:         RSA public key length in bits
+        :days:         length in days certificate is valid
+        :openssl:      name/path string of openssl command
         :keyAlgorithm: key algorithm to use (e.g. mldsa65); ignores ``bits`` arg
         """
         if keyAlgorithm is None:
