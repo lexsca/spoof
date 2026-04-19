@@ -64,20 +64,6 @@ Multiple Spoof HTTP servers can be run concurrently, and by default, the port
 number is the next available unused port. With OpenSSL installed, Spoof can
 also provide an SSL/TLS HTTP server. HTTP proxying and IPv6 are also supported.
 
-Response precedence
-===================
-
-Spoof determines what response to send to incoming requests based on
-the following precedence, highest to lowest:
-
-#. Oldest response queued in ``.responses`` using first-in, first-out (FIFO) order
-#. Response stored in ``.defaultResponse`` if no responses are queued
-#. Response stored in ``.errorResponse`` if ``.defaultResponse`` is ``None``
-
-By default, Spoof will respond with an **HTTP 503 Service Unavailable** error,
-because newly created Spoof instances have no responses queued and no default
-response set. This requires non-error HTTP responses to be explicitly specified.
-
 Response syntax
 ===============
 
@@ -100,11 +86,25 @@ Spoof expects responses to have the following syntax:
    def callback(request):
        return [200, [], request.path]
 
+Response precedence
+===================
+
+Spoof determines what response to send to incoming requests based on
+the following precedence, highest to lowest:
+
+#. Oldest response queued in ``.responses`` using first-in, first-out (FIFO) order
+#. Response stored in ``.defaultResponse`` if no responses are queued
+#. Response stored in ``.errorResponse`` if ``.defaultResponse`` is ``None``
+
+By default, Spoof will respond with an **HTTP 503 Service Unavailable** error,
+because newly created Spoof instances have no responses queued and no default
+response set. This requires non-error HTTP responses to be explicitly specified.
+
 Response queue
 ==============
 
 Spoof will always try to send a response from ``.responses`` first, before falling
-back to ``.defaultResponse`` or ``.errorResponse`` if the queue is empty. Backed by a
+back to ``.defaultResponse`` if the queue is empty. Backed by a
 `deque <https://docs.python.org/3/library/collections.html#collections.deque>`__
 instance, the ``.responses`` queue supports adding items via ``.responses.append()``
 and ``.responses.extend()``, similar to a regular list.
@@ -131,9 +131,12 @@ verifying content, and request paths:
        assert requests.get(httpd.url + "/oops").status_code == 404
        assert [r.path for r in httpd.requests] == ["/path", "/alt/path", "/oops"]
 
-Response callback
-=================
-Set a callback as the default response (callbacks can also be queued):
+Response default
+================
+
+Spoof will always try to send a response from ``.responses`` first, before falling
+back to ``.defaultResponse`` if the queue is empty. Here's an example of setting a
+callback as a default response:
 
 .. code-block:: python
 
@@ -151,8 +154,7 @@ Request history
 Spoof records each request and appends it to the ``.requests`` property,
 which is backed by a
 `deque <https://docs.python.org/3/library/collections.html#collections.deque>`__
-instance, the same as the ``.responses`` property.  Once added to the ``.requests``
-property, a request instance only exists for historical purposes. Example
+instance, the same as the ``.responses`` property. Think of it like a pre-parsed access log. Example
 using request history:
 
 .. code-block:: python
