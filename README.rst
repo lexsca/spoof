@@ -30,9 +30,9 @@ Spoof 👻
 A test interface for HTTP
 =========================
 Spoof lets you easily create HTTP servers listening on real network
-sockets. Designed for test environments, what responses to return can be
-configured while an HTTP server is running. Requests can be inspected
-live or after a response is sent.
+sockets. Designed for test environments, what responses to send can be
+configured anytime, including while an HTTP server is running. Requests
+can be inspected live or after a response is sent.
 
 Unlike a conventional HTTP server, where specific methods and paths are
 configured in advance, Spoof accepts and records *all* requests, sending
@@ -43,13 +43,12 @@ Why would I want this?
 Spoof is all about enabling test-driven development (and refactoring) of
 HTTP client code. Have you ever felt icky patching a client library to
 write tests? Ever been burned by this? Ever wanted to refactor a client
-library, but had no way to check correctness apart from doing live
+library, but had no way to verify behavior apart from doing live
 integration testing? Ever wanted mock for HTTP? If you answered yes to
 any of the above, Spoof might be for you.
 
 Installation and Compatibility
 ==============================
-
 Spoof is available on PyPI:
 
 .. code-block:: console
@@ -66,7 +65,6 @@ also provide an SSL/TLS HTTP server. HTTP proxying and IPv6 are also supported.
 
 Response syntax
 ===============
-
 Spoof expects responses to have the following syntax:
 
 .. code-block:: python
@@ -88,7 +86,6 @@ Spoof expects responses to have the following syntax:
 
 Response precedence
 ===================
-
 Spoof determines what response to send to incoming requests based on
 the following precedence, highest to lowest:
 
@@ -102,7 +99,6 @@ response set. This requires non-error HTTP responses to be explicitly specified.
 
 Response queue
 ==============
-
 Spoof will always try to send a response from ``.responses`` first, before falling
 back to ``.defaultResponse`` if the queue is empty. Backed by a
 `deque <https://docs.python.org/3/library/collections.html#collections.deque>`__
@@ -133,10 +129,9 @@ verifying content, and request paths:
 
 Response default
 ================
-
 Spoof will always try to send a response from ``.responses`` first, before falling
-back to ``.defaultResponse`` if the queue is empty. Here's an example of setting a
-callback as a default response:
+back to ``.defaultResponse`` if the queue is empty. Example setting a callback as
+a default response:
 
 .. code-block:: python
 
@@ -150,7 +145,6 @@ callback as a default response:
 
 Request history
 ===============
-
 Spoof records each request and appends it to the ``.requests`` property,
 which is backed by a
 `deque <https://docs.python.org/3/library/collections.html#collections.deque>`__
@@ -173,7 +167,6 @@ using request history:
 
 Request properties
 ==================
-
 ``SpoofRequestEnv`` instances have the following properties:
 
 +-------------------------+----------------------------------------------+
@@ -208,7 +201,11 @@ Request properties
 
 SSL/TLS Mode
 ============
-Test queued response with a self-signed SSL/TLS certificate:
+Spoof supports SSL/TLS connectivity by passing an
+`SSLContext <https://docs.python.org/3/library/ssl.html#ssl-contexts>`__,
+or if OpenSSL command line tools are available, creating an ``SSLContext``
+with a self-signed certificate. Configured correctly, this should not raise
+any warnings or errors:
 
 .. code-block:: python
 
@@ -240,8 +237,8 @@ set to the path of the self-signed certificate to silence SSL/TLS errors:
            response = requests.get(httpd.url)
            assert response.text == "No self-signed cert warning!"
 
-If OpenSSL 3.5.0 or later is installed, Post-Quantum Cryptography (PQC)
-key algorithms can be used:
+If `OpenSSL 3.5.0 <https://openssl-library.org/post/2025-04-08-openssl-35-final-release/>`__
+or later is installed, Post-Quantum Cryptography (PQC) key algorithms can be used:
 
 .. code-block:: python
 
@@ -363,4 +360,3 @@ that callbacks can also be queued.
    (Pdb) response[2] = "content set from pdb"
    (Pdb) c
    'content set from pdb'
-
