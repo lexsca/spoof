@@ -1,6 +1,8 @@
+import itertools
 import json
 import os
 import random
+import socket
 import ssl
 import unittest
 
@@ -21,10 +23,8 @@ class TestRequest(BaseMixin):
     def setUpClass(cls):
         cls.selfSigned = spoof.SelfSignedSSLContext()
         cls.sslContext = cls.selfSigned.sslContext
-        cls.httpd = spoof.HTTPServer(sslContext=cls.sslContext)
-        cls.httpd6 = spoof.HTTPServer6("::1", sslContext=cls.sslContext)
-        cls.httpd.start()
-        cls.httpd6.start()
+        cls.httpd = spoof.HTTPServer(sslContext=cls.sslContext).start()
+        cls.httpd6 = spoof.HTTPServer6(sslContext=cls.sslContext).start()
 
     @classmethod
     def tearDownClass(cls):
@@ -146,10 +146,13 @@ class TestRequest(BaseMixin):
         self.assertEqual(request.status_code, errorResponse[0])
 
     def test_spoof_selfSigned_raises_exception_on_connect(self):
-        sslContext = spoof.SSLContext.selfSigned()
-        httpd = spoof.HTTPServer(sslContext=sslContext)
-        with self.assertRaises(requests.ConnectionError):
-            self.session.get(httpd.url + "/random")
+        # this kind of ssl http server setup has no way to access the underlying
+        # certificate and key files. the intent is to provide a real ssl context
+        # that is untrusted and kicked back as invalid, potentially to test out
+        # implementations that trust ssl connections that should not be trusted.
+        with spoof.HTTPServer(sslContext=spoof.SSLContext.selfSigned()) as httpd:
+            with self.assertRaises(requests.exceptions.SSLError):
+                self.session.get(httpd.url)
 
     def test_spoof_allows_callable_defaultResponse(self):
         status_code = random.randint(205, 299)
@@ -213,6 +216,65 @@ class TestRequest(BaseMixin):
         self.assertEqual(expected_path, response.text)
         self.assertEqual(expected_path, self.httpd.requests[-1].path)
 
+    def test_large_batch_queued_responses(self):
+        batchSize = 1_000
+        responses = [
+            [200, [("Content-Type", "application/json")], f'{{"seq": {seq}}}']
+            for seq in range(batchSize)
+        ]
+        with spoof.HTTPServer() as httpd:
+            httpd.responses.extend(responses)
+            for seq in range(batchSize):
+                self.assertEqual({"seq": seq}, requests.get(httpd.url).json())
+            self.assertEqual(batchSize, len(httpd.requests))
+
+    def test_large_batch_generated_responses(self):
+        def responseGenerator():
+            for seq in itertools.count():
+                yield [200, [("Content-Type", "application/json")], json.dumps({"seq": seq})]
+
+        with spoof.HTTPServer() as httpd:
+            batchSize = 1_000
+            response = responseGenerator()
+            httpd.defaultResponse = lambda request: next(response)
+            for seq in range(batchSize):
+                self.assertEqual({"seq": seq}, self.session.get(httpd.url).json())
+            self.assertEqual(batchSize, len(httpd.requests))
+
+    def test_attrs_return_None_if_server_is_unbound(self):
+        httpd = spoof.HTTPServer()
+        self.assertIsNone(httpd.server)
+        self.assertIsNone(httpd.address)
+        self.assertIsNone(httpd.port)
+        self.assertIsNone(httpd.url)
+
+    def test_changing_sslContext_and_restarting(self):
+        expected = "set-sslcontext-live"
+        httpd = spoof.HTTPServer(sslContext=spoof.SSLContext.selfSigned()).start()
+        httpd.defaultResponse = [200, [], expected]
+        with self.assertRaises(requests.exceptions.SSLError):
+            requests.get(httpd.url)
+
+        httpd.sslContext = self.selfSigned.sslContext
+        httpd.restart()
+        result = requests.get(httpd.url, verify=self.selfSigned.certFile).text
+        self.assertTrue(httpd.url.startswith("https"))
+        self.assertEqual(expected, result)
+
+    def test_changing_serverAddress_and_restarting(self):
+        httpd = spoof.HTTPServer(host="127.0.0.1").start()
+        httpd.defaultResponse = lambda request: [200, [], request.serverName]
+
+        httpd.serverAddress = ("::1", 0)
+        httpd.restart()
+        self.assertEqual(requests.get(httpd.url).text, "::1")
+        self.assertEqual(httpd.server.socket.family, socket.AF_INET6)
+
+        httpd.serverAddress = ("127.0.0.1", 0)
+        httpd.restart()
+        self.assertEqual(requests.get(httpd.url).text, "127.0.0.1")
+        self.assertEqual(httpd.server.socket.family, socket.AF_INET)
+
 
 class TestProxy(BaseMixin):
     @classmethod
@@ -224,8 +286,7 @@ class TestProxy(BaseMixin):
         cls.unlink(cls.cert, cls.key)
 
     def setUp(self):
-        self.httpd = spoof.HTTPServer()
-        self.httpd.start()
+        self.httpd = spoof.HTTPServer().start()
         self.session = requests.Session()
         self.session.verify = self.cert
         self.sslContext = spoof.SSLContext.fromCertChain(self.cert, self.key)
@@ -265,16 +326,14 @@ class TestProxy(BaseMixin):
         self.assertEqual(expected, result)
 
     def test_spoof_https_site_through_https_proxy(self):
-        # https proxies for https supported in requests v2.25.0 / urllib3 v1.26
         expected = upstream_content = b"octet-comeback-squirmy"
-        httpd = spoof.HTTPServer(sslContext=self.sslContext)
+        httpd = spoof.HTTPServer(sslContext=self.sslContext).start()
         httpd.defaultResponse = [200, [], None]
-        httpd.start()
-        httpd.upstream = spoof.HTTPServer(sslContext=self.sslContext)
+        httpd.upstream = spoof.HTTPServer(sslContext=self.sslContext).start()
         httpd.upstream.defaultResponse = [200, [], upstream_content]
-        httpd.upstream.start()
-        proxies = {"https": httpd.url}
-        result = self.session.get(httpd.upstream.url, proxies=proxies).content
+
+        # https proxies for https supported in requests v2.25.0 / urllib3 v1.26
+        result = self.session.get(httpd.upstream.url, proxies={"https": httpd.url}).content
         self.assertTrue(httpd.upstream.url.startswith("https"))
         self.assertTrue(httpd.url.startswith("https"))
         self.assertEqual(expected, result)
