@@ -1,3 +1,18 @@
+2.3.0 (2026-04-27)
+==================
+
+- Add ``.restart()`` convenience method
+- Add ``.serverAddress`` property to allow setting the server address
+  (requires restart after setting)
+- Add ``.sslContext`` property to allow setting the sslContext
+  (requires restart after setting)
+- Return ``None`` for server address, port, and URL if not started
+- Return ``self`` for ``.start()`` method
+- Apply least permission to GitHub Actions workflows
+- Cleanup code
+- Update tests
+- Update docs
+
 2.2.2 (2026-04-21)
 ==================
 

@@ -29,10 +29,10 @@ Spoof 👻
 
 A test interface for HTTP
 =========================
-Spoof lets you easily create HTTP servers listening on real network
-sockets. Designed for test environments, what responses to send can be
-configured anytime, including while an HTTP server is running. Requests
-can be inspected live or after a response is sent.
+Spoof lets you easily create HTTP servers on real network sockets.
+Designed for test environments, what responses to send can be configured
+anytime, including while an HTTP server is running. Requests can be
+inspected live or after a response is sent.
 
 Unlike a conventional HTTP server, where specific methods and paths are
 configured in advance, Spoof accepts and records *all* requests, sending
@@ -57,7 +57,8 @@ Spoof is available on PyPI:
 
 Spoof is tested on Python 3.10 to 3.14, leverages the ``http.server`` module
 included in the Python standard library, and has no external dependencies.
-It may work on older versions of Python, but this is not supported.
+It may work on older versions of Python, but this is
+`not supported <https://devguide.python.org/versions/>`__.
 
 Multiple Spoof HTTP servers can be run concurrently, and by default, the port
 number is the next available unused port. With OpenSSL installed, Spoof can
@@ -80,7 +81,7 @@ Spoof expects responses to have the following syntax:
    # bytes content
    [200, [("Content-Type", "application/json")], b'{"success": true }']
 
-   # responses can also be a callback
+   # responses can also be a callback, with request as the only argument
    def callback(request):
        return [200, [], request.path]
 
@@ -148,8 +149,8 @@ Request history
 Spoof records each request and appends it to the ``.requests`` property,
 which is backed by a
 `deque <https://docs.python.org/3/library/collections.html#collections.deque>`__
-instance, the same as the ``.responses`` property. Think of it like a pre-parsed access log. Example
-using request history:
+instance, the same as the ``.responses`` property. Think of it like a structured
+access log. Example using request history:
 
 .. code-block:: python
 

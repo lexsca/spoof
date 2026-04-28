@@ -21,11 +21,11 @@ URI_QUERY_SEPARATOR = "?"
 MEGABYTE = 2**20
 
 
-class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
-    """Provides HTTP handler for use with `BaseHTTPServer.HTTPServer`
-    compatible class server. Because the class is passed directly
-    instead of an instance of the class, the `*Queue` class attributes
-    must be set before passing to the HTTP server.
+class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    """Provides HTTP handler for use with ``http.server`` compatible class
+    server. Because the class is passed directly instead of an instance of
+    the class, the `*Queue` class attributes must be set before passing to
+    the HTTP server.
     """
 
     debug = False
@@ -33,7 +33,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
     errorResponse = [
         HTTP_SERVICE_UNAVAILABLE,
         [],
-        "No responses queued and no default response set\n\n",
+        "The .responses queue is empty and .defaultResponse is None\n\n",
     ]
     maxRequestLength = 1 * MEGABYTE
     proxyRequestGen = collections.namedtuple("SpoofProxyRequest", "thread run")
@@ -85,18 +85,21 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
                 response = self.errorResponse
         return response
 
-    def sendResponse(self, response):
-        """Sends response to HTTP client."""
-        statusCode, headers, content = response
-
+    def encodeResponseContent(self, content):
         if content and isinstance(content, str):
             content = content.encode(RESPONSE_ENCODING)
-        contentLength = len(content) if content else 0
+
+        return content
+
+    def sendResponse(self, response):
+        """Sends response to HTTP client."""
+        statusCode, headers, rawContent = response
+        content = self.encodeResponseContent(rawContent)
 
         self.send_response(statusCode)
 
         if content is not None:
-            self.send_header("Content-Length", contentLength)
+            self.send_header("Content-Length", len(content))
         for header in headers:
             self.send_header(*header)
         self.end_headers()
@@ -151,7 +154,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
     def _proxyRequest(self, run):
         downstream = self.request
         upstream = socket.create_connection(
-            self.server.upstream.serverAddress, self.server.upstream.timeout
+            (self.server.upstream.address, self.server.upstream.port), self.server.upstream.timeout
         )
         writer = {downstream: upstream, upstream: downstream}
 
@@ -176,7 +179,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
             super(HTTPRequestHandler, self).log_message(*args, **kwargs)
 
 
-class HTTPServer(object):
+class HTTPServer:
     """Provides a single-threaded HTTP testing server.
 
     Class attributes:
@@ -199,53 +202,57 @@ class HTTPServer(object):
         """
         self._requests = collections.deque()
         self._responses = collections.deque()
-        self._sslContext = sslContext
+        self._serverAddress = None
         self._upstream = None
-        self.handlerClass = self.configureHandlerClass(self.handlerClass)
+        self.handlerClass = self.configureHandlerClass()
         self.proxyMode = proxy
         self.proxyThreads = []
         self.recvSize = 4096
         self.selectTimeout = 0.1
         self.server = None
         self.serverAddress = (host, port)
-        if ":" in str(host):
-            self.serverClass = HTTPServer6.configureServerClass(host)
-        else:
-            self.serverClass = self.configureServerClass(host)
-        self.serverClass.timeout = timeout
-        self.serverClass.sslContext = sslContext
+        self.sslContext = sslContext
         self.thread = None
+        self.timeout = timeout
 
         if self.proxyMode:
-            self.upstream = type(self)(host="localhost", port=0, sslContext=sslContext, proxy=False)
-            self.defaultResponse = [200, [], None]
+            self.setupDefaultUpstream()
+
+    @property
+    def serverAddress(self):
+        """Returns address to bind for HTTP server."""
+        return self._serverAddress
+
+    @serverAddress.setter
+    def serverAddress(self, address):
+        """Sets address to bind for HTTP server and setup server classes."""
+        self._serverAddress = address
+        self.serverClass = self.configureServerClass(address[0])
 
     @property
     def address(self):
-        """Returns server IP/IPv6 address."""
-        return self.serverAddress[0]
+        """Returns bound server IP/IPv6 address or ``None`` if unbound."""
+        return None if self.server is None else self.server.server_address[0]
 
     @property
     def port(self):
-        """Returns server TCP port."""
-        return self.serverAddress[1]
+        """Returns bound server TCP port or ``None`` if unbound."""
+        return None if self.server is None else self.server.server_address[1]
 
     @property
     def url(self):
-        """Returns URL string to connect to this server instance."""
-        protocol = "http" if self.sslContext is None else "https"
-        address = "[{0}]".format(self.address) if ":" in self.address else self.address
-        return "{0}://{1}:{2}".format(protocol, address, self.port)
-
-    @property
-    def sslContext(self):
-        """Returns `ssl.SSLContext` instance."""
-        return self._sslContext
+        """Returns URL string for server instance or ``None`` if unbound."""
+        url = None
+        if self.server is not None:
+            protocol = "http" if self.sslContext is None else "https"
+            address = "[{0}]".format(self.address) if ":" in self.address else self.address
+            url = "{0}://{1}:{2}".format(protocol, address, self.port)
+        return url
 
     @property
     def timeout(self):
         """Returns HTTP server timeout."""
-        timeout = self.serverClass.timeout
+        timeout = self._timeout
         if self.server is not None:
             timeout = self.server.timeout
         return timeout
@@ -253,7 +260,7 @@ class HTTPServer(object):
     @timeout.setter
     def timeout(self, value):
         """Sets HTTP server timeout."""
-        self.serverClass.timeout = value
+        self._timeout = value
         if self.server is not None:
             self.server.timeout = value
 
@@ -272,35 +279,46 @@ class HTTPServer(object):
         if self.server is not None:
             self.server.upstream = value
 
-    @classmethod
-    def configureServerClass(cls, host):
-        """Reloads and configures server class. This is necessary, because of
+    def configureServerClass(self, host):
+        """Reloads and configures server class. This is necessary because of
         the use of class attributes.  If more than one address family is used
         concurrently (e.g. IPv4 _and_ IPv6), one will overwrite the other, as
         the default behavior is for a class to be loaded once and only once,
         including attributes. Using `type()` effectively creates a new class
-        with _discrete_ attributes. This is a class method, because it is
-        called outside of the scope of an initialized class instance.
-
-        :host: hostname string of server
+        with _discrete_ attributes.
         """
-        sourceClass = cls.serverClass
+        sourceClass = type(self).serverClass
         serverClass = type(sourceClass.__name__, (sourceClass, object), dict())
-        serverClass.address_family = cls.addressFamily
+        serverClass.address_family = socket.AF_INET6 if host.count(":") > 1 else self.addressFamily
         serverClass.serverName = host
         return serverClass
 
-    def configureHandlerClass(self, sourceClass):
+    def configureHandlerClass(self):
         """Reloads and configures handler class. This is necessary because of
         the use of class attributes, which are necessary because the handler
         class is instantiated anew to handle each request by `BaseServer`.
         To keep the handler class unique to each `Spoof` instance, `type()` is
         used to effectively create a discrete handler class and attributes.
         """
+        sourceClass = type(self).handlerClass
         handlerClass = type(sourceClass.__name__, (sourceClass, object), dict())
         handlerClass.responseContentQueue = self._responses
         handlerClass.requestReportQueue = self._requests
         return handlerClass
+
+    def setupDefaultUpstream(self):
+        """Configures ready-to-use default upstream HTTP server."""
+        self.upstream = type(self)(
+            host="localhost", port=0, sslContext=self.sslContext, proxy=False
+        )
+        # RFC 7231, Section 4.3.6, "A server MUST NOT send any Transfer-Encoding or
+        # Content-Length header fields in a 2xx (Successful) response to CONNECT."
+        self.defaultResponse = [200, [], None]
+
+    def restart(self):
+        """Stops and starts HTTP server."""
+        self.stop()
+        self.start()
 
     def start(self):
         """Starts HTTP server thread(s)."""
@@ -311,15 +329,15 @@ class HTTPServer(object):
             self.upstream.start()
 
         self.server = self.serverClass(self.serverAddress, self.handlerClass)
-        self.serverAddress = self.server.server_address
-        self.server.upstream = self.upstream
-        if self.server.sslContext is not None:
-            self.server.socket = self.server.sslContext.wrap_socket(
-                self.server.socket, server_side=True
-            )
+        self.server.timeout = self._timeout
+        self.server.upstream = self._upstream
+        if self.sslContext is not None:
+            self.server.socket = self.sslContext.wrap_socket(self.server.socket, server_side=True)
+
         name = getattr(type(self), "__name__")
         self.thread = threading.Thread(target=self.server.serve_forever, name=name)
         self.thread.start()
+        return self
 
     def stop(self):
         """Stops HTTP server thread(s) and closes socket(s)."""
@@ -340,19 +358,15 @@ class HTTPServer(object):
         self.thread = None
 
     def __enter__(self):
-        """Starts HTTP server and returns `Spoof` instance when invoked as a
-        context manager (with/as)."""
-        self.start()
-        return self
+        """Starts and returns HTTP server instance when invoked as a context manager (with/as)."""
+        return self.start()
 
     def __exit__(self, exceptionType, exceptionValue, traceback):
-        """Destroys HTTP server instance when context manager block finishes.
-        If context block ends normally, all arguments will be `None`.
-        """
+        """Stops HTTP server instance when context manager block exits."""
         self.stop()
 
     def __del__(self):
-        """Closes HTTP server socket when instance goes out of scope."""
+        """Stops HTTP server when instance goes out of scope."""
         if getattr(self, "server", None) is not None:
             self.stop()
 
@@ -468,7 +482,7 @@ class HTTPServer6(HTTPServer):
     addressFamily = socket.AF_INET6
 
 
-class SSLContext(object):
+class SSLContext:
     """Provides methods to create SSL context for use with `HTTPServer`."""
 
     @staticmethod
