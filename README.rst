@@ -45,7 +45,13 @@ HTTP client code. Have you ever felt icky patching a client library to
 write tests? Ever been burned by this? Ever wanted to refactor a client
 library, but had no way to verify behavior apart from doing live
 integration testing? Ever wanted mock for HTTP? If you answered yes to
-any of the above, Spoof might be for you.
+any of the above, Spoof might be for you. Some key features:
+
+* Decoupled requests and responses
+* SSL/TLS with PQC
+* HTTP/S proxy via CONNECT
+* IPv6
+* Live request debugging
 
 Installation and Compatibility
 ==============================

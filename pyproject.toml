@@ -7,7 +7,7 @@ name = "spoof"
 dynamic = ["version"]
 requires-python = ">=3.10"
 dependencies = []
-description = "HTTP server for testing environments"
+description = "A simple HTTP server for test environments"
 readme = "README.rst"
 authors = [
     {"name" = "Lex Scarisbrick", "email" = "lex@scarisbrick.org"},
@@ -25,6 +25,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Software Development :: Quality Assurance",
     "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Testing :: Mocking",
     "Topic :: Software Development :: Testing :: Traffic Generation",
 ]
 
@@ -44,7 +45,6 @@ py-modules = ["spoof"]
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["spoof*"]
-#exclude = [".github*", "tests*", "dist*", "build*", "*.egg-info*", "src/docs*"]
 
 [tool.setuptools_scm]
 # https://setuptools-scm.readthedocs.io/en/latest/extending/#setuptools_scmversion_scheme

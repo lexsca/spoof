@@ -1,3 +1,10 @@
+2.3.1 (2026-05-01)
+==================
+
+- Return ``self`` for ``.restart()`` method
+- Update tests
+- Update docs
+
 2.3.0 (2026-04-27)
 ==================
 
