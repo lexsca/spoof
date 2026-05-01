@@ -318,7 +318,7 @@ class HTTPServer:
     def restart(self):
         """Stops and starts HTTP server."""
         self.stop()
-        self.start()
+        return self.start()
 
     def start(self):
         """Starts HTTP server thread(s)."""

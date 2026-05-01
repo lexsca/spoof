@@ -275,6 +275,16 @@ class TestRequest(BaseMixin):
         self.assertEqual(requests.get(httpd.url).text, "127.0.0.1")
         self.assertEqual(httpd.server.socket.family, socket.AF_INET)
 
+    def test_restart_returns_spoof_instance(self):
+        expected = httpd = spoof.HTTPServer()
+        result = httpd.restart()
+        self.assertEqual(expected, result)
+
+    def test_start_returns_spoof_instance(self):
+        expected = httpd = spoof.HTTPServer()
+        result = httpd.start()
+        self.assertEqual(expected, result)
+
 
 class TestProxy(BaseMixin):
     @classmethod
