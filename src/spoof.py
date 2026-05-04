@@ -6,7 +6,7 @@ import os
 import re
 import select
 import socket
-import ssl
+import ssl as _ssl
 import subprocess
 import tempfile
 import threading
@@ -16,9 +16,9 @@ HTTP_OK = 200
 HTTP_BAD_GATEWAY = 502
 HTTP_SERVICE_UNAVAILABLE = 503
 HTTP_REQUEST_ENTITY_TOO_LARGE = 413
+MEGABYTE = 2**20
 RESPONSE_ENCODING = "utf-8"
 URI_QUERY_SEPARATOR = "?"
-MEGABYTE = 2**20
 
 
 class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -64,8 +64,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if env["contentLength"] > 0 and env["contentLength"] <= self.maxRequestLength:
             env["content"] = self.rfile.read(env["contentLength"])
         if URI_QUERY_SEPARATOR in env["uri"]:
-            sep = URI_QUERY_SEPARATOR
-            path, _, env["queryString"] = env["uri"].partition(sep)
+            path, _, env["queryString"] = env["uri"].partition(URI_QUERY_SEPARATOR)
         else:
             path = self.path
         env["path"] = urllib.parse.unquote(path)
@@ -176,7 +175,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         """Overrides base class to squelch request logging unless self.debug is true."""
 
         if self.debug:
-            super(HTTPRequestHandler, self).log_message(*args, **kwargs)
+            super().log_message(*args, **kwargs)
 
 
 class HTTPServer:
@@ -493,7 +492,7 @@ class SSLContext:
         :keyFile:  path to certificate signing key
                    (may be included in certFile)
         """
-        context = ssl.create_default_context(purpose=ssl.Purpose.CLIENT_AUTH)
+        context = _ssl.create_default_context(purpose=_ssl.Purpose.CLIENT_AUTH)
         context.load_cert_chain(certFile, keyFile)
         return context
 
@@ -626,3 +625,36 @@ class SelfSignedSSLContext(SSLContext):
 
     def __exit__(self, *args, **kwargs):
         self.cleanup()
+
+
+class ssl(SelfSignedSSLContext):
+    def __del__(self):
+        self.cleanup()
+
+
+class http(HTTPServer):
+    def __init__(self, *args, **kwargs):
+        self._ssl = None
+
+        __ssl = kwargs.pop("ssl", None)
+        if __ssl is True:
+            self.ssl = ssl()
+        elif isinstance(__ssl, SSLContext):
+            self.ssl = __ssl
+        elif __ssl is not None:
+            raise ValueError("ssl: True or spoof.SSLContext instance expected")
+
+        super().__init__(*args, **kwargs)
+
+    @property
+    def ssl(self):
+        return self._ssl
+
+    @ssl.setter
+    def ssl(self, ssl):
+        self._ssl = ssl
+        self.sslContext = ssl.sslContext
+
+
+class http6(http):
+    addressFamily = socket.AF_INET6

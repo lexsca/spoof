@@ -21,9 +21,9 @@ Spoof 👻
    >>> import requests
    ... import spoof
    ...
-   ... with spoof.HTTPServer() as httpd:
-   ...     httpd.responses.append([200, [], "This is Spoof 👻👋"])
-   ...     requests.get(httpd.url).text
+   ... with spoof.http() as http:
+   ...     http.responses.append([200, [], "This is Spoof 👻👋"])
+   ...     requests.get(http.url).text
    ...
    'This is Spoof 👻👋'
 
@@ -122,17 +122,17 @@ verifying content, and request paths:
    import requests
    import spoof
 
-   with spoof.HTTPServer() as httpd:
-       httpd.responses.extend([
+   with spoof.http() as http:
+       http.responses.extend([
            [200, [("Content-Type", "application/json")], b'{"id": 1111}'],
            [200, [("Content-Type", "application/json")], b'{"id": 2222}'],
        ])
-       httpd.defaultResponse = [404, [], "Not found"]
+       http.defaultResponse = [404, [], "Not found"]
 
-       assert requests.get(httpd.url + "/path").json() == {"id": 1111}
-       assert requests.get(httpd.url + "/alt/path").json() == {"id": 2222}
-       assert requests.get(httpd.url + "/oops").status_code == 404
-       assert [r.path for r in httpd.requests] == ["/path", "/alt/path", "/oops"]
+       assert requests.get(http.url + "/path").json() == {"id": 1111}
+       assert requests.get(http.url + "/alt/path").json() == {"id": 2222}
+       assert requests.get(http.url + "/oops").status_code == 404
+       assert [r.path for r in http.requests] == ["/path", "/alt/path", "/oops"]
 
 Response default
 ================
@@ -145,10 +145,10 @@ a default response:
    import requests
    import spoof
 
-   with spoof.HTTPServer() as httpd:
-       httpd.defaultResponse = lambda request: [200, [], request.path]
+   with spoof.http() as http:
+       http.defaultResponse = lambda request: [200, [], request.path]
 
-       assert requests.get(httpd.url + "/alt").text == "/alt"
+       assert requests.get(http.url + "/alt").text == "/alt"
 
 Request history
 ===============
@@ -163,11 +163,11 @@ access log. Example using request history:
    >>> import requests
    ... import spoof
    ...
-   ... with spoof.HTTPServer() as httpd:
-   ...     httpd.defaultResponse = [200, [], None]
+   ... with spoof.http() as http:
+   ...     http.defaultResponse = [200, [], None]
    ...
-   ...     [requests.get(httpd.url + path) for path in ["/a", "/b", "/c"]]
-   ...     [f"{r.method} {r.path} {r.protocol}" for r in httpd.requests]
+   ...     [requests.get(http.url + path) for path in ["/a", "/b", "/c"]]
+   ...     [f"{r.method} {r.path} {r.protocol}" for r in http.requests]
    ...
    [<Response [200]>, <Response [200]>, <Response [200]>]
    ['GET /a HTTP/1.1', 'GET /b HTTP/1.1', 'GET /c HTTP/1.1']
@@ -219,12 +219,11 @@ any warnings or errors:
    import requests
    import spoof
 
-   with spoof.SelfSignedSSLContext() as selfSigned:
-       with spoof.HTTPServer(sslContext=selfSigned.sslContext) as httpd:
-           httpd.responses.append([200, [], "No self-signed cert warning!"])
+   with spoof.http(ssl=True) as http:
+       http.responses.append([200, [], "No self-signed cert warning!"])
 
-           response = requests.get(httpd.url, verify=selfSigned.certFile)
-           assert response.text == "No self-signed cert warning!"
+       response = requests.get(http.url, verify=http.ssl.certFile)
+       assert response.text == "No self-signed cert warning!"
 
 If setting the ``verify`` option in ``requests`` isn't workable, the
 ``REQUESTS_CA_BUNDLE`` or ``CURL_CA_BUNDLE`` environment variables can be
@@ -236,13 +235,12 @@ set to the path of the self-signed certificate to silence SSL/TLS errors:
    import requests
    import spoof
 
-   with spoof.SelfSignedSSLContext() as selfSigned:
-       with spoof.HTTPServer(sslContext=selfSigned.sslContext) as httpd:
-           httpd.responses.append([200, [], "No self-signed cert warning!"])
+   with spoof.http(ssl=True) as http:
+       http.responses.append([200, [], "No self-signed cert warning!"])
 
-           os.environ["REQUESTS_CA_BUNDLE"] = selfSigned.certFile
-           response = requests.get(httpd.url)
-           assert response.text == "No self-signed cert warning!"
+       os.environ["REQUESTS_CA_BUNDLE"] = http.ssl.certFile
+       response = requests.get(http.url)
+       assert response.text == "No self-signed cert warning!"
 
 If `OpenSSL 3.5.0 <https://openssl-library.org/post/2025-04-08-openssl-35-final-release/>`__
 or later is installed, Post-Quantum Cryptography (PQC) key algorithms can be used:
@@ -252,11 +250,11 @@ or later is installed, Post-Quantum Cryptography (PQC) key algorithms can be use
    import requests
    import spoof
 
-   with spoof.SelfSignedSSLContext(keyAlgorithm="mldsa65") as selfSigned:
-       with spoof.HTTPServer(sslContext=selfSigned.sslContext) as httpd:
-           httpd.responses.append([200, [], "TLS with PQC Key Algorithm"])
+   with spoof.ssl(keyAlgorithm="mldsa65") as ssl:
+       with spoof.http(ssl=ssl) as http:
+           http.responses.append([200, [], "TLS with PQC Key Algorithm"])
 
-           response = requests.get(httpd.url, verify=selfSigned.certFile)
+           response = requests.get(http.url, verify=ssl.certFile)
            assert response.text == "TLS with PQC Key Algorithm"
 
 Proxy Mode
@@ -271,14 +269,14 @@ external services. Example usage:
    import requests
    import spoof
 
-   with spoof.SelfSignedSSLContext(commonName="example.spoof") as selfSigned:
-       with spoof.HTTPServer(sslContext=selfSigned.sslContext, proxy=True) as proxy:
+   with spoof.ssl(commonName="example.spoof") as ssl:
+       with spoof.http(ssl=ssl, proxy=True) as proxy:
            proxy.upstream.defaultResponse = [200, [], "I'm here!"]
 
            response = requests.get(
                "https://example.spoof/ayt",
                proxies={"https": proxy.url},
-               verify=selfSigned.certFile
+               verify=ssl.certFile
            )
            assert proxy.requests[0].method == "CONNECT"
            assert proxy.requests[0].path == "example.spoof:443"
@@ -295,12 +293,12 @@ If setting the ``proxies`` option in ``requests`` isn't workable, the
    import requests
    import spoof
 
-   with spoof.SelfSignedSSLContext(commonName="example.spoof") as selfSigned:
-       with spoof.HTTPServer(sslContext=selfSigned.sslContext, proxy=True) as proxy:
+   with spoof.ssl(commonName="example.spoof") as ssl:
+       with spoof.http(ssl=ssl, proxy=True) as proxy:
            proxy.upstream.defaultResponse = [200, [], "I'm here!"]
 
            os.environ["https_proxy"] = proxy.url
-           os.environ["REQUESTS_CA_BUNDLE"] = selfSigned.certFile
+           os.environ["REQUESTS_CA_BUNDLE"] = ssl.certFile
 
            response = requests.get("https://example.spoof/ayt")
            assert proxy.requests[0].method == "CONNECT"
@@ -312,7 +310,7 @@ If setting the ``proxies`` option in ``requests`` isn't workable, the
 IPv6 Mode
 =========
 Setting the ``host`` attribute to an IPv6 address will work as expected. There
-is also an IPv6-only ``spoof.HTTPServer6`` class that can be used if needed to
+is also an IPv6-only ``spoof.http6`` class that can be used if needed to
 only listen on IPv6 sockets.
 
 .. code-block:: python
@@ -320,10 +318,10 @@ only listen on IPv6 sockets.
    >>> import requests
    ... import spoof
    ...
-   ... with spoof.HTTPServer(host="::1") as httpd:
-   ...     httpd.responses.append([200, [], "This is Spoof on IPv6 👀"])
-   ...     requests.get(httpd.url).text
-   ...     httpd.url
+   ... with spoof.http(host="::1") as http:
+   ...     http.responses.append([200, [], "This is Spoof on IPv6 👀"])
+   ...     requests.get(http.url).text
+   ...     http.url
    ...
    'This is Spoof on IPv6 👀'
    'http://[::1]:51324'
@@ -333,10 +331,10 @@ only listen on IPv6 sockets.
    >>> import requests
    ... import spoof
    ...
-   ... with spoof.HTTPServer6(host="localhost") as httpd:
-   ...     httpd.responses.append([200, [], "This is also Spoof on IPv6 👀"])
-   ...     requests.get(httpd.url).text
-   ...     httpd.url
+   ... with spoof.http6(host="localhost") as http:
+   ...     http.responses.append([200, [], "This is also Spoof on IPv6 👀"])
+   ...     requests.get(http.url).text
+   ...     http.url
    ...
    'This is also Spoof on IPv6 👀'
    'http://[::1]:54296'
@@ -357,9 +355,9 @@ that callbacks can also be queued.
    ...     breakpoint()
    ...     return response
    ...
-   ... with spoof.HTTPServer() as httpd:
-   ...     httpd.defaultResponse = debugCallback
-   ...     requests.get(httpd.url).text
+   ... with spoof.http() as http:
+   ...     http.defaultResponse = debugCallback
+   ...     requests.get(http.url).text
    ...
    > <python-input-0>(6)debugCallback()
    (Pdb) request
