@@ -285,6 +285,31 @@ class TestRequest(BaseMixin):
         result = httpd.start()
         self.assertEqual(expected, result)
 
+    def test_spoof_alias_minimal_example(self):
+        expected = response = "spoof-alias-minimal-example"
+        with spoof.http(ssl=True) as http:
+            http.defaultResponse = [200, [], response]
+            result = requests.get(http.url, verify=http.ssl.certFile).text
+            self.assertEqual(expected, result)
+
+    def test_spoof_alias_with_ssl_instance(self):
+        expected = response = "spoof-alias-ssl-instance"
+        with spoof.http(ssl=spoof.ssl()) as http:
+            http.defaultResponse = [200, [], response]
+            result = requests.get(http.url, verify=http.ssl.certFile).text
+            self.assertEqual(expected, result)
+
+    def test_spoof_alias_with_ssl_value_error(self):
+        with self.assertRaises(ValueError):
+            with spoof.http(ssl="True"):
+                pass
+
+    def test_spoof_http6_alias(self):
+        http = spoof.http6().start()
+        http.defaultResponse = [200, [], "spoof-http6-alias"]
+        self.assertEqual(requests.get(http.url).text, "spoof-http6-alias")
+        self.assertEqual(http.server.socket.family, socket.AF_INET6)
+
 
 class TestProxy(BaseMixin):
     @classmethod
