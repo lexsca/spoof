@@ -31,7 +31,7 @@ A test interface for HTTP
 =========================
 Spoof lets you easily create HTTP servers on real network sockets.
 Designed for test environments, what responses to send can be configured
-anytime, including while an HTTP server is running. Requests can be
+anytime, including while a server is running. Requests can be
 inspected live or after a response is sent.
 
 Unlike a conventional HTTP server, where specific methods and paths are
@@ -40,18 +40,16 @@ whatever responses are queued, or a default response if the queue is empty.
 
 Why would I want this?
 ======================
-Spoof is all about enabling test-driven development (and refactoring) of
-HTTP client code. Have you ever felt icky patching a client library to
-write tests? Ever been burned by this? Ever wanted to refactor a client
-library, but had no way to verify behavior apart from doing live
-integration testing? Ever wanted mock for HTTP? If you answered yes to
-any of the above, Spoof might be for you. Some key features:
+Have you ever wanted mock for HTTP? Ever wanted to refactor a client library,
+but had no way to verify behavior apart from doing live integration testing?
+If so, Spoof might be for you. Some key features:
 
 * Decoupled requests and responses
-* SSL/TLS with PQC
-* HTTP/S proxy via CONNECT
-* IPv6
+* Concurrent servers
+* SSL/TLS with post-quantum cryptography
+* Proxy tunneling
 * Live request debugging
+* IPv6
 
 Installation and Compatibility
 ==============================
@@ -61,14 +59,12 @@ Spoof is available on PyPI:
 
    $ python -m pip install spoof
 
-Spoof is tested on Python 3.10 to 3.14, leverages the ``http.server`` module
-included in the Python standard library, and has no external dependencies.
-It may work on older versions of Python, but this is
-`not supported <https://devguide.python.org/versions/>`__.
+Spoof is tested on Python 3.10 to 3.14, uses the ``http.server`` module in
+the standard library, and has no external Python dependencies.
 
-Multiple Spoof HTTP servers can be run concurrently, and by default, the port
-number is the next available unused port. With OpenSSL installed, Spoof can
-also provide an SSL/TLS HTTP server. HTTP proxying and IPv6 are also supported.
+Multiple Spoof servers can be run concurrently, and by default, the port
+number is the next available port. With OpenSSL installed, Spoof can provide
+SSL/TLS connectivity. HTTP proxying and IPv6 are also supported.
 
 Response syntax
 ===============
@@ -113,8 +109,8 @@ instance, the ``.responses`` queue supports adding items via ``.responses.append
 and ``.responses.extend()``, similar to a regular list.
 
 Spoof HTTP servers run in a single background thread, so response order should
-be predictably serial. Tests using Spoof should be able to use the same fixtures,
-in the same order, and get the same results. Example queueing multiple responses,
+be predictable. Tests using Spoof should be able to use the same fixtures, in
+the same order, and get the same results. Example queueing multiple responses,
 verifying content, and request paths:
 
 .. code-block:: python
@@ -208,11 +204,10 @@ Request properties
 
 SSL/TLS Mode
 ============
-Spoof supports SSL/TLS connectivity by passing an
-`SSLContext <https://docs.python.org/3/library/ssl.html#ssl-contexts>`__,
-or if OpenSSL command line tools are available, creating an ``SSLContext``
-with a self-signed certificate. Configured correctly, this should not raise
-any warnings or errors:
+Spoof can support SSL/TLS when the ``ssl=True`` argument is given, which
+depends on the OpenSSL command line tools. This generates a self-signed
+certificate suitable for use with localhost connections. For other
+use-cases, ``spoof.ssl()`` can provide more configuration options:
 
 .. code-block:: python
 
@@ -259,7 +254,7 @@ or later is installed, Post-Quantum Cryptography (PQC) key algorithms can be use
 
 Proxy Mode
 ==========
-Spoof supports proxying by port-forwarding ``CONNECT`` requests to a
+Spoof supports proxying by forwarding ``CONNECT`` requests to a
 separate upstream Spoof instance when the ``proxy=True`` argument is
 given. Unlike a real proxy server, Spoof won't try to connect to
 external services. Example usage:
