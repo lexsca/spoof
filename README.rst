@@ -59,7 +59,7 @@ Spoof is available on PyPI:
 
    $ python -m pip install spoof
 
-Spoof is tested on Python 3.10 to 3.14, uses the ``http.server`` module in
+Spoof is tested on Python 3.10 to 3.15, uses the ``http.server`` module in
 the standard library, and has no external Python dependencies.
 
 Multiple Spoof servers can be run concurrently, and by default, the port
