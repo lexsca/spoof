@@ -196,6 +196,17 @@ class TestRequest(BaseMixin):
         result = response.status_code
         self.assertEqual(expected, result)
 
+    def test_maxRequestLength_can_be_disabled(self):
+        self.httpd.defaultResponse = [200, [], None]
+        request_data = b"a" * (self.httpd.maxRequestLength + 1)
+        response = self.session.post(self.httpd.url, data=request_data)
+        self.assertEqual(response.status_code, spoof.HTTP_REQUEST_ENTITY_TOO_LARGE)
+
+        self.httpd.maxRequestLength = -1
+        response = self.session.post(self.httpd.url, data=request_data)
+        self.assertEqual(response.status_code, spoof.HTTP_OK)
+        self.assertEqual(self.httpd.requests[-1].content, request_data)
+
     def test_queue_single_response(self):
         expected = "One fish"
         self.httpd.responses.append([200, [], expected])
