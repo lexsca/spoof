@@ -45,6 +45,15 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     requestReportQueue = None
     responseContentQueue = None
 
+    def _readRequestContent(self, length, maxLength):
+        content = None
+        if length > 0 and (length <= maxLength or maxLength == -1):
+            content = self.rfile.read(length)
+        elif length:
+            self.rfile.read(length)
+
+        return content
+
     def reportRequestEnv(self):
         """Returns namedtuple containing request report."""
         env = {
@@ -61,12 +70,11 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             "serverPort": int(self.server.server_port),
             "uri": self.path,
         }
-        if env["contentLength"] > 0 and env["contentLength"] <= self.maxRequestLength:
-            env["content"] = self.rfile.read(env["contentLength"])
         if URI_QUERY_SEPARATOR in env["uri"]:
             path, _, env["queryString"] = env["uri"].partition(URI_QUERY_SEPARATOR)
         else:
             path = self.path
+        env["content"] = self._readRequestContent(env["contentLength"], self.maxRequestLength)
         env["path"] = urllib.parse.unquote(path)
         env["json"] = functools.partial(json.loads, env["content"])
         requestEnv = self.requestEnvGen(**env)
@@ -109,7 +117,7 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def getResponse(self, request):
         """Get response for this request."""
         response = self.nextResponse()
-        if request.contentLength > self.maxRequestLength:
+        if self.maxRequestLength != -1 and request.contentLength > self.maxRequestLength:
             response = [
                 HTTP_REQUEST_ENTITY_TOO_LARGE,
                 [],

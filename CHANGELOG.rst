@@ -1,3 +1,9 @@
+2.5.0 (2026-10-07)
+==================
+
+- Allow unlimited ``maxRequestLength`` by setting to ``-1``
+- Update docs
+
 2.4.2 (2026-06-10)
 ==================
 

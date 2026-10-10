@@ -202,6 +202,17 @@ Request properties
 | uri                     | Raw URI path and query string, if present    |
 +-------------------------+----------------------------------------------+
 
+By default, the maximum request length is one 1 MiB (2 ** 20). This can be
+set to any integer or ``-1`` to make the maximum request length unlimited:
+
+.. code-block:: python
+
+   >>> import spoof
+   >>>
+   >>> with spoof.http() as http:
+   ...     http.maxRequestLength = -1
+   ...
+
 SSL/TLS Mode
 ============
 Spoof can support SSL/TLS when the ``ssl=True`` argument is given, which
@@ -251,6 +262,10 @@ or later is installed, Post-Quantum Cryptography (PQC) key algorithms can be use
 
            response = requests.get(http.url, verify=ssl.certFile)
            assert response.text == "TLS with PQC Key Algorithm"
+
+Note that while OpenSSL command line tools are used to create self-signed certificates
+and configuration, this is all accomplished via ``tempfile.mkstemp()`` calls. Existing
+system files are not overwritten or altered in any way.
 
 Proxy Mode
 ==========
