@@ -1,8 +1,10 @@
-2.5.0 (2026-10-07)
+2.5.0 (2026-10-10)
 ==================
 
 - Allow unlimited ``maxRequestLength`` by setting to ``-1``
+- Update tests
 - Update docs
+- Update supported Python to include 3.15.0
 
 2.4.2 (2026-06-10)
 ==================
